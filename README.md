@@ -1,5 +1,7 @@
 # WorkplaceThinker
 
+[English](README.md) | [中文](README.zh-CN.md)
+
 **Paste messy workplace context. Get an evidence-grounded relationship graph.**
 
 WorkplaceThinker is a workplace relationship and risk insight agent built on top
@@ -23,8 +25,9 @@ of encouraging suspicion or workplace politics.
   one product-facing interface.
 - **User control**: verify, reject, promote confirmed facts, or exclude sensitive
   context from memory.
-- **Memory-ready**: designed to reuse DocThinker's session memory, long-horizon
-  memory, and knowledge graph substrate.
+- **Agentic Memory System**: remembers people, patterns, and relationships over time.
+- **Continuous Graph Building**: incrementally updates the relationship graph instead of rebuilding from scratch every time.
+- **Timeline View**: see how relationships and risks evolve over time.
 
 ## Why This Exists
 
@@ -125,6 +128,59 @@ The harness wraps four layers:
 | `ReasoningHarness` | Runs evidence-first rules plus optional LLM enrichment. |
 | `GraphHarness` | Returns graph legend, focus nodes, graph statistics, and default view hints. |
 | `ControlHarness` | Returns safe user actions: verify, reject, promote, exclude, and memory policy controls. |
+
+## Memory System Usage
+
+Enable the memory system to continuously build the relationship graph:
+
+```python
+from workplace_thinker import WorkplaceInsightHarness
+
+# Enable memory system (same session_id preserves history)
+harness = WorkplaceInsightHarness(
+    session_id="my_workplace_journey",
+    enable_memory=True
+)
+
+# Day 1: Understand the team
+result1 = await harness.analyze_information(
+    information="Org: Zhang Wei - Product Lead - reports to Wang Qiang\nZhang Wei says do this first, no approval needed, we'll fill the process later.",
+    question="What should I watch for on my first day?"
+)
+
+# View the current graph from memory
+current_graph = harness.get_current_graph()
+print(current_graph["nodes"])
+
+# Day 2: Encounter issues (memory reuses previous info)
+result2 = await harness.analyze_information(
+    information="Li Na privately said Zhang Wei did this before and the new hire took the blame.",
+    question="What should I do now?"
+)
+
+# View graph evolution timeline
+timeline = harness.get_graph_timeline()
+print(timeline)
+```
+
+## Memory System API
+
+```python
+# Get memory stats
+stats = harness.get_memory_stats()
+
+# Get person profile
+profile = harness.get_person_profile("Zhang Wei")
+
+# Export memory (includes graph data)
+memory_data = harness.export_memory()
+
+# Import memory
+harness.import_memory(memory_data)
+
+# Get relationship history between two people
+history = harness.get_relationship_history("Zhang Wei", "Wang Qiang")
+```
 
 The response includes:
 

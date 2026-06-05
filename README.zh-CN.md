@@ -1,5 +1,7 @@
 # WorkplaceThinker
 
+[English](README.md) | [中文](README.zh-CN.md)
+
 **把一坨职场信息粘进去，自动生成有证据的人际关系图和风险图。**
 
 WorkplaceThinker 是基于 DocThinker fork 出来的职场关系洞察应用。它面向刚入职场、刚进新团队、正在处理复杂协作关系的人：你可以直接粘贴聊天记录、会议纪要、组织架构、项目背景或上传材料，系统会把这些信息整理成一张可审计的关系图。
@@ -26,6 +28,9 @@ WorkplaceThinker 的目标是把这些模糊担心变成结构化图谱。
 - **隐藏假设**：系统可以提出假设，但会明确标记为 hypothesis，不会当作事实。
 - **证据链**：风险和假设尽量关联到原始证据片段。
 - **用户控制**：用户可以确认、否定、提升为长期记忆，或者排除敏感内容。
+- **记忆系统**：持续记忆人物特征、关系模式和风险信号。
+- **持续图谱构建**：增量更新关系图谱，而不是每次都重建。
+- **时间线视图**：查看关系和风险如何随时间演变。
 
 ## 快速运行
 
@@ -93,6 +98,59 @@ result = await harness.analyze_information(
 | `ReasoningHarness` | 基于证据规则推理，并可接 LLM 增强 |
 | `GraphHarness` | 生成 graph legend、焦点节点、统计和默认视图 |
 | `ControlHarness` | 生成确认、否定、提升记忆、排除敏感内容等用户控制动作 |
+
+## 记忆系统使用
+
+启用记忆系统，支持持续构建关系图谱：
+
+```python
+from workplace_thinker import WorkplaceInsightHarness
+
+# 启用记忆系统（同一个 session_id 会保留历史）
+harness = WorkplaceInsightHarness(
+    session_id="my_workplace_journey",
+    enable_memory=True
+)
+
+# 第一天：了解团队
+result1 = await harness.analyze_information(
+    information="组织架构：张伟 - 产品负责人 - 汇报王强\n张伟说先做，不用审批，后补流程。",
+    question="第一天入职，要注意什么？"
+)
+
+# 查看记忆中的当前图谱
+current_graph = harness.get_current_graph()
+print(current_graph["nodes"])
+
+# 第二天：遇到问题（记忆会复用之前的信息）
+result2 = await harness.analyze_information(
+    information="李娜私下说，张伟之前也是这样，后来新人背锅了。",
+    question="现在怎么办？"
+)
+
+# 查看图谱演变时间线
+timeline = harness.get_graph_timeline()
+print(timeline)
+```
+
+## 记忆系统 API
+
+```python
+# 获取记忆统计
+stats = harness.get_memory_stats()
+
+# 获取人物画像
+profile = harness.get_person_profile("张伟")
+
+# 导出记忆（包含图谱数据）
+memory_data = harness.export_memory()
+
+# 导入记忆
+harness.import_memory(memory_data)
+
+# 获取两个人关系的历史
+history = harness.get_relationship_history("张伟", "王强")
+```
 
 ## 图谱含义
 
