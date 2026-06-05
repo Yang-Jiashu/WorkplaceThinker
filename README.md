@@ -44,6 +44,21 @@ LLM-assisted enrichment with evidence constraints
 Relationship graph + risk cards + confirmation questions
 ```
 
+## Harness Interface
+
+The recommended integration surface is `WorkplaceInsightHarness`, not the lower
+level extraction engine. It packages the agent into four product layers:
+
+- `InputHarness`: accepts one messy information bundle and auto-splits evidence,
+  org lines, and question context.
+- `ReasoningHarness`: runs evidence-first rules plus optional LLM enrichment.
+- `GraphHarness`: returns graph metadata, legend, focus nodes, and graph counts.
+- `ControlHarness`: returns user actions for verify, reject, promote, exclude,
+  and memory policy control.
+
+The harness response includes `graph`, `graph_view`, `control_manifest`,
+`harness`, `risks`, `hidden_hypotheses`, `recommended_questions`, and `evidence`.
+
 ## Run The Standalone API
 
 ```bash

@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from .insights import WorkplaceInsightEngine
+from .harness import WorkplaceInsightHarness
 
 
 class WorkplaceAnalyzeRequest(BaseModel):
@@ -56,8 +56,8 @@ async def workplace_radar_home() -> str:
 
 @app.post("/api/v1/workplace/analyze")
 async def analyze_workplace(request: WorkplaceAnalyzeRequest) -> Dict[str, Any]:
-    engine = WorkplaceInsightEngine()
-    return await engine.analyze(
+    harness = WorkplaceInsightHarness()
+    return await harness.analyze_structured(
         chat_messages=request.chat_messages,
         uploaded_texts=request.uploaded_texts,
         org_chart=request.org_chart,
@@ -68,8 +68,8 @@ async def analyze_workplace(request: WorkplaceAnalyzeRequest) -> Dict[str, Any]:
 
 @app.post("/api/v1/workplace/analyze/raw")
 async def analyze_workplace_raw(request: WorkplaceRawAnalyzeRequest) -> Dict[str, Any]:
-    engine = WorkplaceInsightEngine()
-    return await engine.analyze_information(
+    harness = WorkplaceInsightHarness()
+    return await harness.analyze_information(
         request.information,
         question=request.question,
         org_chart=request.org_chart,

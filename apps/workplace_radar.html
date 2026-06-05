@@ -161,6 +161,8 @@
       <div id="risks"></div>
       <h3>建议确认问题</h3>
       <div id="questions"></div>
+      <h3>控制动作</h3>
+      <div id="actions"></div>
     </section>
   </div>
   <script>
@@ -198,7 +200,13 @@
         "这次例外是否有明确授权人？是否需要补一条书面记录？",
         "我负责的部分和其他人的交界在哪里？有哪些依赖需要对方确认？",
         "这件事最终 owner 是谁？验收标准和截止时间是什么？"
-      ]
+      ],
+      control_manifest: {
+        actions: [
+          {label:"验证最高风险：流程绕过", description:"要求最小可审计记录，确认授权人和例外条件。"},
+          {label:"确认或否定假设：非正式决策链", description:"隐藏假设不会当作事实进入长期记忆，除非用户确认。"}
+        ]
+      }
     };
 
     function parseOrg() {
@@ -240,6 +248,13 @@
       renderList('hypotheses', data.hidden_hypotheses || [], true);
       renderList('risks', risks, false);
       document.getElementById('questions').innerHTML = (data.recommended_questions || []).map(q => `<div class="card"><p>${escapeHtml(q)}</p></div>`).join('');
+      document.getElementById('actions').innerHTML = ((data.control_manifest || {}).actions || []).map(a => `
+        <div class="card">
+          <strong>${escapeHtml(a.label || a.id || '控制动作')}</strong>
+          <p>${escapeHtml(a.description || '')}</p>
+          <span class="chip">${escapeHtml(a.type || 'control')}</span>
+        </div>
+      `).join('') || '<p class="small">暂无控制动作。</p>';
       drawGraph(nodes, edges);
     }
 

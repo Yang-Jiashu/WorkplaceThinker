@@ -56,6 +56,19 @@ single `information` field and auto-splits the bundle into evidence, org chart
 candidates, and chat/material context. Structured clients can still call
 `/api/v1/workplace/analyze`.
 
+## Harness Packaging
+
+`WorkplaceInsightHarness` is the recommended integration boundary. It hides the
+agent's internal complexity behind four layers:
+
+- `InputHarness`: raw user information -> evidence, org candidates, question.
+- `ReasoningHarness`: evidence-first deterministic extraction + optional LLM.
+- `GraphHarness`: graph legend, focus nodes, graph statistics, default view.
+- `ControlHarness`: memory policy and user-safe next actions.
+
+This keeps the user experience simple: paste context, inspect graph, confirm or
+reject what should become memory.
+
 ## Graph Model
 
 Nodes:

@@ -1,6 +1,6 @@
 import unittest
 
-from workplace_thinker import WorkplaceInsightEngine
+from workplace_thinker import WorkplaceInsightEngine, WorkplaceInsightHarness
 
 try:
     from fastapi.testclient import TestClient
@@ -30,6 +30,26 @@ class WorkplaceInsightEngineTest(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(result["meta"]["evidence_count"], 3)
         self.assertTrue(any(node["label"] == "张伟" for node in result["graph"]["nodes"]))
         self.assertTrue(any(node["type"] == "risk_signal" for node in result["graph"]["nodes"]))
+
+
+class WorkplaceInsightHarnessTest(unittest.IsolatedAsyncioTestCase):
+    async def test_harness_wraps_one_box_input_with_controls(self):
+        result = await WorkplaceInsightHarness().analyze_information(
+            """
+            组织架构：张伟 - 产品负责人 - Product 团队 - 汇报王强
+            张伟说这个需求先做，不用审批，后面再补流程。
+            张伟和王强私下沟通过，没有同步到项目群。
+            """,
+            question="有什么隐藏风险？",
+        )
+        self.assertEqual("Workplace Insight Harness", result["harness"]["name"])
+        self.assertIn("graph_harness", result["harness"]["layers"])
+        self.assertIn("control_harness", result["harness"]["layers"])
+        self.assertEqual("raw_information", result["meta"]["input_mode"])
+        self.assertTrue(result["graph_view"]["legend"])
+        self.assertGreaterEqual(result["graph_view"]["high_risk_count"], 1)
+        self.assertFalse(result["control_manifest"]["memory_policy"]["persist_unconfirmed_hypotheses"])
+        self.assertTrue(result["control_manifest"]["actions"])
         self.assertTrue(any(node["type"] == "hidden_hypothesis" for node in result["graph"]["nodes"]))
         self.assertTrue(any(edge["type"] in {"formal_reports_to", "collaborates_with", "commits_to"} for edge in result["graph"]["edges"]))
         self.assertTrue(any(edge["type"] == "mentions_risk" for edge in result["graph"]["edges"]))
@@ -81,6 +101,7 @@ class WorkplaceInsightAPITest(unittest.TestCase):
         payload = response.json()
         self.assertIn("graph", payload)
         self.assertTrue(payload["risks"])
+        self.assertIn("harness", payload)
 
     @unittest.skipIf(TestClient is None or app is None, "fastapi is not installed")
     def test_api_raw_analyze_endpoint(self):
@@ -96,6 +117,7 @@ class WorkplaceInsightAPITest(unittest.TestCase):
         payload = response.json()
         self.assertEqual("raw_information", payload["meta"]["input_mode"])
         self.assertTrue(payload["risks"])
+        self.assertIn("control_manifest", payload)
 
     @unittest.skipIf(TestClient is None or app is None, "fastapi is not installed")
     def test_home_serves_graph_ui(self):

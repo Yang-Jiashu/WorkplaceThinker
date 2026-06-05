@@ -32,12 +32,15 @@ flowchart LR
         RiskRules["Risk signal candidates\nownership ambiguity,\ninformation asymmetry,\nprocess bypass,\ncredit/blame, pressure"]
     end
 
-    subgraph Agent["Workplace Insight Agent"]
+    subgraph Agent["Workplace Insight Harness"]
+        InputHarness["InputHarness\none-box context normalization"]
         Planner["Analysis planner\nwhat to inspect"]
         PromptBuilder["Evidence-constrained\nLLM prompt builder"]
         LLM["LLM reasoning\nsoft relation interpretation"]
         Validator["Schema + evidence validator\nno evidence, no claim"]
         Hypothesis["Hidden hypothesis builder\nhypothesis_not_fact"]
+        GraphHarness["GraphHarness\nlegend + focus + graph metadata"]
+        ControlHarness["ControlHarness\nverify, reject, promote, exclude"]
     end
 
     subgraph Graph["Relationship Graph Assembly"]
@@ -80,7 +83,8 @@ flowchart LR
     KG --> People
     LongMemory --> Planner
 
-    People --> Planner
+    People --> InputHarness
+    InputHarness --> Planner
     RelationRules --> Planner
     RiskRules --> Planner
     Planner --> PromptBuilder
@@ -91,11 +95,14 @@ flowchart LR
     RelationRules --> Validator
     RiskRules --> Validator
     Validator --> Hypothesis
+    Validator --> GraphHarness
+    Hypothesis --> GraphHarness
 
     Validator --> Nodes
     Validator --> Edges
     Hypothesis --> Nodes
     Hypothesis --> Edges
+    GraphHarness --> Nodes
     Nodes --> Scoring
     Edges --> Scoring
 
@@ -103,6 +110,9 @@ flowchart LR
     Scoring --> RiskCards
     Hypothesis --> RiskCards
     Validator --> Questions
+    ControlHarness --> Controls
+    Validator --> ControlHarness
+    Hypothesis --> ControlHarness
     Radar --> Controls
     RiskCards --> Controls
     Questions --> Controls
