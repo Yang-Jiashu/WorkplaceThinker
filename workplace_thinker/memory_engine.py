@@ -52,6 +52,32 @@ class PersonProfile:
     last_updated: float = field(default_factory=time.time)
 
 
+@dataclass
+class RelationshipEdge:
+    """关系边 - 记录两个人之间的关系"""
+    source: str
+    target: str
+    relationship_type: str  # "formal_reports_to", "collaborates_with", "supports", etc.
+    label: str
+    confidence: float = 0.5
+    evidence_count: int = 0
+    first_observed_at: float = field(default_factory=time.time)
+    last_observed_at: float = field(default_factory=time.time)
+    evidence_snippets: List[str] = field(default_factory=list)
+    
+    def get_key(self) -> str:
+        return f"{self.source}|{self.target}|{self.relationship_type}"
+
+
+@dataclass
+class GraphSnapshot:
+    """图谱快照 - 记录某个时间点的图谱状态"""
+    timestamp: float
+    nodes: List[Dict[str, Any]]
+    edges: List[Dict[str, Any]]
+    summary: str = ""
+
+
 class WorkplaceMemoryEngine:
     """
     职场记忆引擎 - 管理 WorkplaceThinker 的所有记忆功能
@@ -60,8 +86,9 @@ class WorkplaceMemoryEngine:
     1. 历史场景检索 - 找到相似的职场情况
     2. 人物画像积累 - 持续更新人物特征
     3. 风险模式识别 - 识别重复出现的风险模式
-    4. 用户反馈学习 - 根据用户确认/否定调整记忆
-    5. 记忆导出/导入 - 支持记忆的持久化
+    4. 持续图谱构建 - 增量更新关系图谱，支持时间线
+    5. 用户反馈学习 - 根据用户确认/否定调整记忆
+    6. 记忆导出/导入 - 支持记忆的持久化
     """
     
     def __init__(
@@ -77,6 +104,11 @@ class WorkplaceMemoryEngine:
         self._patterns: Dict[str, WorkplaceMemoryPattern] = {}
         self._historical_analyses: List[Dict[str, Any]] = []
         self._feedback_history: List[Dict[str, Any]] = []
+        
+        # ====== 持续图谱构建 ======
+        self._relationships: Dict[str, RelationshipEdge] = {}  # key: source|target|type
+        self._graph_snapshots: List[GraphSnapshot] = []  # 时间线快照
+        self._people: Dict[str, Dict[str, Any]] = {}  # 持久化的人物节点
         
         # DocThinker 记忆核心
         self._memory_core: Optional[AgentMemoryCore] = None
@@ -317,6 +349,9 @@ class WorkplaceMemoryEngine:
                     confidence=risk.get("confidence", 0.5),
                 )
         
+        # ====== 持续更新关系图谱 ======
+        self.update_graph_from_analysis(analysis_result)
+        
         # 保存到 DocThinker 的长期记忆
         if self.use_docthinker and self._memory_core:
             await self._save_to_docthinker_memory(analysis_result)
@@ -419,6 +454,31 @@ class WorkplaceMemoryEngine:
                 }
                 for key, p in self._patterns.items()
             },
+            # ====== 图谱数据 ======
+            "people": self._people,
+            "relationships": {
+                key: {
+                    "source": rel.source,
+                    "target": rel.target,
+                    "relationship_type": rel.relationship_type,
+                    "label": rel.label,
+                    "confidence": rel.confidence,
+                    "evidence_count": rel.evidence_count,
+                    "first_observed_at": rel.first_observed_at,
+                    "last_observed_at": rel.last_observed_at,
+                    "evidence_snippets": rel.evidence_snippets,
+                }
+                for key, rel in self._relationships.items()
+            },
+            "graph_snapshots": [
+                {
+                    "timestamp": s.timestamp,
+                    "nodes": s.nodes,
+                    "edges": s.edges,
+                    "summary": s.summary,
+                }
+                for s in self._graph_snapshots
+            ],
             "historical_analyses_count": len(self._historical_analyses),
         }
     
@@ -451,8 +511,229 @@ class WorkplaceMemoryEngine:
                     last_used=pattern_data.get("last_used", time.time()),
                 )
         
+        # ====== 导入图谱数据 ======
+        if "people" in data:
+            self._people = data["people"]
+        
+        if "relationships" in data:
+            self._relationships = {}
+            for key, rel_data in data["relationships"].items():
+                self._relationships[key] = RelationshipEdge(
+                    source=rel_data["source"],
+                    target=rel_data["target"],
+                    relationship_type=rel_data["relationship_type"],
+                    label=rel_data["label"],
+                    confidence=rel_data.get("confidence", 0.5),
+                    evidence_count=rel_data.get("evidence_count", 0),
+                    first_observed_at=rel_data.get("first_observed_at", time.time()),
+                    last_observed_at=rel_data.get("last_observed_at", time.time()),
+                    evidence_snippets=rel_data.get("evidence_snippets", []),
+                )
+        
+        if "graph_snapshots" in data:
+            self._graph_snapshots = [
+                GraphSnapshot(
+                    timestamp=s["timestamp"],
+                    nodes=s["nodes"],
+                    edges=s["edges"],
+                    summary=s.get("summary", ""),
+                )
+                for s in data["graph_snapshots"]
+            ]
+        
         if "session_id" in data and not self.session_id:
             self.session_id = data["session_id"]
+    
+    # ====== 持续图谱构建 ======
+    
+    def update_graph_from_analysis(self, analysis_result: Dict[str, Any]):
+        """
+        从分析结果中增量更新关系图谱
+        
+        Args:
+            analysis_result: analyze() 方法的返回结果
+        """
+        current_time = time.time()
+        
+        # 更新人物节点
+        for person in analysis_result.get("people", []):
+            name = person.get("label", person.get("name", ""))
+            if not name:
+                continue
+            
+            if name not in self._people:
+                self._people[name] = {
+                    "name": name,
+                    "title": person.get("title", ""),
+                    "team": person.get("team", ""),
+                    "first_observed_at": current_time,
+                    "last_observed_at": current_time,
+                    "observation_count": 0,
+                }
+            
+            # 更新人物信息
+            person_data = self._people[name]
+            person_data["last_observed_at"] = current_time
+            person_data["observation_count"] += 1
+            if person.get("title"):
+                person_data["title"] = person.get("title")
+            if person.get("team"):
+                person_data["team"] = person.get("team")
+        
+        # 更新关系边
+        for edge in analysis_result.get("relationships", []):
+            source = edge.get("source_name", edge.get("source", ""))
+            target = edge.get("target_name", edge.get("target", ""))
+            rel_type = edge.get("type", "related_to")
+            label = edge.get("label", rel_type)
+            confidence = edge.get("score", 0.5)
+            
+            if not source or not target:
+                continue
+            
+            edge_key = f"{source}|{target}|{rel_type}"
+            
+            if edge_key not in self._relationships:
+                # 新关系
+                self._relationships[edge_key] = RelationshipEdge(
+                    source=source,
+                    target=target,
+                    relationship_type=rel_type,
+                    label=label,
+                    confidence=confidence,
+                    first_observed_at=current_time,
+                    last_observed_at=current_time,
+                )
+            else:
+                # 更新现有关系
+                existing = self._relationships[edge_key]
+                existing.last_observed_at = current_time
+                existing.evidence_count += 1
+                # 置信度更新：取平均，或者增加
+                existing.confidence = min(0.95, (existing.confidence + confidence) / 2)
+            
+            # 添加证据片段
+            evidence_snippet = edge.get("evidence_ids", [])
+            if evidence_snippet:
+                if isinstance(evidence_snippet, list):
+                    self._relationships[edge_key].evidence_snippets.extend(
+                        [str(s) for s in evidence_snippet]
+                    )
+                else:
+                    self._relationships[edge_key].evidence_snippets.append(str(evidence_snippet))
+        
+        # 创建图谱快照
+        self._create_snapshot(analysis_result.get("summary", ""))
+    
+    def _create_snapshot(self, summary: str = ""):
+        """创建当前图谱的快照，用于时间线视图"""
+        # 构建当前图谱
+        nodes = []
+        for name, person in self._people.items():
+            nodes.append({
+                "id": name,
+                "label": name,
+                "type": "person",
+                "title": person.get("title", ""),
+                "team": person.get("team", ""),
+                "first_observed_at": person.get("first_observed_at"),
+                "last_observed_at": person.get("last_observed_at"),
+            })
+        
+        edges = []
+        for edge_key, rel in self._relationships.items():
+            edges.append({
+                "id": edge_key,
+                "source": rel.source,
+                "target": rel.target,
+                "type": rel.relationship_type,
+                "label": rel.label,
+                "confidence": rel.confidence,
+                "evidence_count": rel.evidence_count,
+                "first_observed_at": rel.first_observed_at,
+                "last_observed_at": rel.last_observed_at,
+            })
+        
+        # 保存快照
+        snapshot = GraphSnapshot(
+            timestamp=time.time(),
+            nodes=nodes,
+            edges=edges,
+            summary=summary,
+        )
+        self._graph_snapshots.append(snapshot)
+        
+        # 限制快照数量，保留最近 50 个
+        if len(self._graph_snapshots) > 50:
+            self._graph_snapshots = self._graph_snapshots[-50:]
+    
+    def get_current_graph(self) -> Dict[str, Any]:
+        """获取当前最新的关系图谱"""
+        nodes = []
+        for name, person in self._people.items():
+            nodes.append({
+                "id": name,
+                "label": name,
+                "type": "person",
+                "title": person.get("title", ""),
+                "team": person.get("team", ""),
+                "first_observed_at": person.get("first_observed_at"),
+                "last_observed_at": person.get("last_observed_at"),
+            })
+        
+        edges = []
+        for edge_key, rel in self._relationships.items():
+            edges.append({
+                "id": edge_key,
+                "source": rel.source,
+                "target": rel.target,
+                "type": rel.relationship_type,
+                "label": rel.label,
+                "confidence": rel.confidence,
+                "evidence_count": rel.evidence_count,
+                "first_observed_at": rel.first_observed_at,
+                "last_observed_at": rel.last_observed_at,
+            })
+        
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "metadata": {
+                "people_count": len(nodes),
+                "relationships_count": len(edges),
+                "snapshots_count": len(self._graph_snapshots),
+                "session_id": self.session_id,
+            }
+        }
+    
+    def get_graph_timeline(self) -> List[Dict[str, Any]]:
+        """获取图谱的时间线演变记录"""
+        return [
+            {
+                "timestamp": snapshot.timestamp,
+                "people_count": len(snapshot.nodes),
+                "relationships_count": len(snapshot.edges),
+                "summary": snapshot.summary,
+            }
+            for snapshot in self._graph_snapshots
+        ]
+    
+    def get_relationship_history(self, person1: str, person2: str) -> List[Dict[str, Any]]:
+        """获取两个人之间的关系演变历史"""
+        history = []
+        for snapshot in self._graph_snapshots:
+            # 查找这两个人之间的关系
+            rels = [
+                e for e in snapshot.edges
+                if (e.get("source") == person1 and e.get("target") == person2) or
+                   (e.get("source") == person2 and e.get("target") == person1)
+            ]
+            if rels:
+                history.append({
+                    "timestamp": snapshot.timestamp,
+                    "relationships": rels,
+                })
+        return history
     
     def get_stats(self) -> Dict[str, Any]:
         """获取记忆统计信息"""
@@ -464,4 +745,8 @@ class WorkplaceMemoryEngine:
             "feedback_count": len(self._feedback_history),
             "use_docthinker": self.use_docthinker,
             "docthinker_available": HAS_DOCTHINKER_MEMORY,
+            # 图谱相关统计
+            "people_count": len(self._people),
+            "relationships_count": len(self._relationships),
+            "snapshots_count": len(self._graph_snapshots),
         }

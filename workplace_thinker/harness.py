@@ -262,9 +262,13 @@ class WorkplaceInsightHarness:
             "memory_enabled": self.enable_memory,
         }
         
-        # 添加记忆统计
+        # 添加记忆统计和当前图谱
         if self.enable_memory and self.memory:
             result["memory_stats"] = self.memory.get_stats()
+            # 自动添加当前完整图谱
+            result["persistent_graph"] = self.memory.get_current_graph()
+            # 添加时间线
+            result["graph_timeline"] = self.memory.get_graph_timeline()
         
         return result
     
@@ -321,3 +325,23 @@ class WorkplaceInsightHarness:
             self.engine.memory = self.memory
             return True
         return False
+    
+    # ====== 持续图谱构建 ======
+    
+    def get_current_graph(self) -> Optional[Dict[str, Any]]:
+        """获取当前最新的关系图谱（持续构建的版本）"""
+        if self.enable_memory and self.memory:
+            return self.memory.get_current_graph()
+        return None
+    
+    def get_graph_timeline(self) -> Optional[List[Dict[str, Any]]]:
+        """获取图谱的时间线演变记录"""
+        if self.enable_memory and self.memory:
+            return self.memory.get_graph_timeline()
+        return None
+    
+    def get_relationship_history(self, person1: str, person2: str) -> Optional[List[Dict[str, Any]]]:
+        """获取两个人之间的关系演变历史"""
+        if self.enable_memory and self.memory:
+            return self.memory.get_relationship_history(person1, person2)
+        return None
