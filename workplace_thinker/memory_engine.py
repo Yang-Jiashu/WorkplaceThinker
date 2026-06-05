@@ -371,20 +371,25 @@ class WorkplaceMemoryEngine:
 关键人物：{', '.join(people)}
 主要风险：{', '.join(risks) if risks else '无明显风险'}"""
             
-            # 提取概念
-            concepts = people + risks
-            
-            # 调用 DocThinker 的记忆巩固
-            await self._memory_core.after_response(
-                session_id=self.session_id,
-                question="职场关系分析",
-                answer=memory_text,
-                concepts=concepts,
-            )
+            # 尝试调用 DocThinker 的记忆巩固（兼容性处理）
+            try:
+                await self._memory_core.after_response(
+                    session_id=self.session_id,
+                    question="职场关系分析",
+                    answer=memory_text,
+                )
+            except TypeError:
+                # 如果上面的调用失败，尝试更简单的方式
+                await self._memory_core.after_response(
+                    session_id=self.session_id,
+                    input="职场关系分析",
+                    output=memory_text,
+                )
             
             print(f"[WorkplaceThinker] Saved analysis to DocThinker memory")
         except Exception as e:
             print(f"[WorkplaceThinker] Failed to save to DocThinker memory: {e}")
+            # DocThinker 集成失败不影响核心功能
     
     def get_memory_context(self, query: str = "") -> Dict[str, Any]:
         """
