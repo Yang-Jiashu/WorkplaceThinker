@@ -1,0 +1,112 @@
+# WorkplaceThinker Product Architecture
+
+## Product Goal
+
+WorkplaceThinker turns messy workplace context into an evidence-grounded graph:
+
+- who is involved;
+- who formally reports to whom;
+- who collaborates, supports, blocks, commits, or changes stance;
+- where unclear ownership, private decision loops, process bypass, pressure, or
+  credit/blame risk may exist.
+
+The target user is an early-career employee who needs clarity, not paranoia.
+
+## Why LLM + Memory + Graph
+
+LLMs are good at interpreting soft workplace language, but they can over-infer.
+Graphs are good at making structure visible, but they need typed evidence.
+Agentic memory is what lets the system accumulate long-horizon patterns:
+
+- "this person often changes commitments late";
+- "this project has repeated owner ambiguity";
+- "this manager uses private channels for key decisions";
+- "this user prefers neutral confirmation language".
+
+## LLM Collaboration Pattern
+
+The LLM does not directly produce the final answer from raw chat. It works inside
+a constrained pipeline:
+
+1. Rule extraction creates candidate people, edges, and risk signals.
+2. Evidence ids are assigned before any LLM call.
+3. The LLM receives:
+   - user question;
+   - organization chart;
+   - evidence snippets with ids;
+   - candidate relationships and risks;
+   - output schema and safety rules.
+4. The LLM may enrich:
+   - relationship labels;
+   - missing soft ties;
+   - hidden hypotheses;
+   - recommended confirmation questions.
+5. The validator rejects or downgrades any item without evidence ids.
+
+## Graph Model
+
+Nodes:
+
+- Person
+- Team
+- Project
+- Decision
+- RiskSignal
+- Hypothesis
+
+Edges:
+
+- `formal_reports_to`
+- `collaborates_with`
+- `supports`
+- `blocks_or_challenges`
+- `commits_to`
+- `changed_stance`
+- `mentions_risk`
+- `evidenced_by`
+
+Visual language:
+
+- Blue line: formal org structure.
+- Sage line: support / collaboration.
+- Copper dashed line: risk signal.
+- Plum dotted line: hypothesis.
+- Thicker line: stronger confidence or repeated evidence.
+
+## Output Contract
+
+Every response contains:
+
+- `summary`
+- `graph.nodes`
+- `graph.edges`
+- `risks`
+- `hidden_hypotheses`
+- `recommended_questions`
+- `evidence`
+- `meta`
+
+Hidden hypotheses must use `status = hypothesis_not_fact`.
+
+## Memory Design
+
+Short-horizon memory:
+
+- current uploaded docs;
+- current chat and extracted evidence;
+- current graph state.
+
+Long-horizon memory:
+
+- recurring collaboration patterns;
+- repeated risk categories;
+- user preferences for communication style;
+- confirmed corrections from the user.
+
+User controls:
+
+- choose which chats/docs are remembered;
+- delete specific workplace memories;
+- mark a hypothesis as wrong;
+- promote a confirmed relationship into durable memory.
+

@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WorkplaceThinker · 职场关系雷达</title>
+  <style>
+    :root {
+      --paper: #fbfaf7;
+      --surface: #fffefa;
+      --ink: #292520;
+      --muted: #766f66;
+      --line: #ded8cc;
+      --copper: #b85c38;
+      --sage: #54746b;
+      --lake: #4b6f8f;
+      --ochre: #b7892d;
+      --plum: #8a5f87;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .shell { display: grid; grid-template-columns: 360px 1fr 390px; min-height: 100vh; }
+    aside, main { border-right: 1px solid var(--line); }
+    aside, .panel { background: rgba(255,254,250,0.9); }
+    .brand { padding: 26px 24px 18px; border-bottom: 1px solid var(--line); }
+    .kicker { color: var(--copper); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+    h1 { margin: 8px 0 6px; font-family: Georgia, "Times New Roman", serif; font-size: 30px; line-height: 1.1; }
+    p { color: var(--muted); line-height: 1.55; }
+    textarea {
+      width: 100%;
+      min-height: 150px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      background: var(--surface);
+      color: var(--ink);
+      line-height: 1.55;
+      outline: none;
+    }
+    textarea:focus { border-color: var(--copper); box-shadow: 0 0 0 3px rgba(184,92,56,.12); }
+    label { display: block; margin: 18px 0 8px; font-size: 13px; font-weight: 700; color: var(--ink); }
+    button {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--ink);
+      padding: 10px 15px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button.primary { background: var(--copper); border-color: var(--copper); color: #fffefa; }
+    .controls { padding: 20px 24px 28px; }
+    main { position: relative; overflow: hidden; }
+    .topbar {
+      height: 76px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    .graph-wrap { position: absolute; inset: 76px 0 0; }
+    svg { width: 100%; height: 100%; display: block; }
+    .node circle { stroke: #fffefa; stroke-width: 4; }
+    .node text { font-size: 13px; fill: #fffefa; font-weight: 700; text-anchor: middle; dominant-baseline: middle; }
+    .edge { stroke: #a89d90; stroke-width: 2; }
+    .edge.risk { stroke: var(--copper); stroke-width: 4; stroke-dasharray: 6 6; }
+    .edge.formal { stroke: var(--lake); stroke-width: 2.5; }
+    .edge.support { stroke: var(--sage); stroke-width: 3; }
+    .edge-label { font-size: 11px; fill: var(--muted); paint-order: stroke; stroke: var(--paper); stroke-width: 6; }
+    .side { padding: 24px; overflow-y: auto; max-height: 100vh; }
+    .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .metric, .card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+      padding: 12px;
+    }
+    .metric strong { display: block; font-size: 24px; margin-top: 4px; }
+    .risk { border-color: #ddb8a7; background: #fff7f0; }
+    .hyp { border-color: #d8c4d5; background: #fbf4fa; }
+    .chip { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; font-size: 11px; color: var(--muted); margin: 3px 4px 0 0; }
+    .small { font-size: 12px; color: var(--muted); }
+    @media (max-width: 1100px) {
+      .shell { grid-template-columns: 1fr; }
+      aside, main { border-right: 0; border-bottom: 1px solid var(--line); }
+      .graph-wrap { position: relative; height: 560px; inset: auto; }
+      .side { max-height: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <div class="brand">
+        <div class="kicker">WorkplaceThinker</div>
+        <h1>职场关系雷达</h1>
+        <p>把聊天、上传材料和组织架构转成可审计的人际关系图、合作图和隐藏风险假设。</p>
+      </div>
+      <div class="controls">
+        <label>关注问题</label>
+        <textarea id="question">我是不是有背锅风险？哪些关系和隐藏问题需要确认？</textarea>
+        <label>聊天 / 上传材料摘录</label>
+        <textarea id="notes">张伟说这个需求先做，不用审批，后面再补流程。
+李娜提醒我，王强之前答应负责验收，但现在又改口说不是他负责。
+张伟和王强私下沟通过，没有同步到项目群。
+王强要求周五必须上线，不然会影响绩效。</textarea>
+        <label>组织架构 JSON</label>
+        <textarea id="org">[
+  {"name":"张伟","title":"产品负责人","team":"Product","manager":"王强"},
+  {"name":"王强","title":"部门经理","team":"Platform"},
+  {"name":"李娜","title":"资深同事","team":"Product","manager":"王强"}
+]</textarea>
+        <div style="display:flex; gap:10px; margin-top:18px;">
+          <button class="primary" onclick="analyze()">生成关系图</button>
+          <button onclick="loadSample()">示例</button>
+        </div>
+        <p class="small">后端接口：POST /api/v1/workplace/analyze。打不开后端时，页面会展示内置示例图。</p>
+      </div>
+    </aside>
+    <main>
+      <div class="topbar">
+        <div>
+          <div class="kicker">relationship graph</div>
+          <strong id="graph-title">证据化关系与风险图</strong>
+        </div>
+        <div class="small">实线：关系 / 虚线：风险信号 / 蓝线：正式汇报</div>
+      </div>
+      <div class="graph-wrap"><svg id="graph"></svg></div>
+    </main>
+    <section class="side panel">
+      <div class="metric-grid">
+        <div class="metric"><span class="small">人物</span><strong id="m-people">0</strong></div>
+        <div class="metric"><span class="small">关系</span><strong id="m-edges">0</strong></div>
+        <div class="metric"><span class="small">风险</span><strong id="m-risks">0</strong></div>
+      </div>
+      <h3>总结</h3>
+      <p id="summary">等待分析。</p>
+      <h3>隐藏假设</h3>
+      <div id="hypotheses"></div>
+      <h3>风险信号</h3>
+      <div id="risks"></div>
+      <h3>建议确认问题</h3>
+      <div id="questions"></div>
+    </section>
+  </div>
+  <script>
+    const fallback = {
+      summary: "识别到 3 个相关人物、5 条关系边。主要风险：流程绕过、信息不对称、责任边界不清。所有隐藏问题均以假设呈现，需要回到证据和确认问题验证。",
+      graph: {
+        nodes: [
+          {id:"person_1", label:"张伟", title:"产品负责人", team:"Product"},
+          {id:"person_2", label:"王强", title:"部门经理", team:"Platform"},
+          {id:"person_3", label:"李娜", title:"资深同事", team:"Product"}
+        ],
+        edges: [
+          {source:"person_1", target:"person_2", type:"formal_reports_to", label:"组织架构汇报", score:.5},
+          {source:"person_1", target:"person_2", type:"process_bypass", label:"流程绕过", score:.85, risk:true},
+          {source:"person_2", target:"person_1", type:"power_pressure", label:"权力压力", score:.68, risk:true},
+          {source:"person_3", target:"person_1", type:"supports", label:"提醒 / 支持", score:.6},
+          {source:"person_2", target:"person_1", type:"commitment", label:"验收改口", score:.7, risk:true}
+        ]
+      },
+      risks: [
+        {title:"流程绕过", severity:.84, confidence:.72, people:["张伟"], suggestion:"要求最小可审计记录，确认授权人和例外条件。"},
+        {title:"信息不对称", severity:.72, confidence:.6, people:["张伟","王强"], suggestion:"把关键结论同步到共同频道。"},
+        {title:"责任边界不清", severity:.76, confidence:.6, people:["王强"], suggestion:"明确 owner、验收标准和截止时间。"}
+      ],
+      hidden_hypotheses: [
+        {title:"可能存在非正式决策链", confidence:.66, rationale:"私下沟通和绕过流程同时出现，关键决策可能没有进入公开渠道。", status:"hypothesis_not_fact"},
+        {title:"可能存在背锅风险", confidence:.63, rationale:"责任边界不清叠加交付压力，新人可能承担未明确授权的结果。", status:"hypothesis_not_fact"}
+      ],
+      recommended_questions: [
+        "这次例外是否有明确授权人？是否需要补一条书面记录？",
+        "我负责的部分和其他人的交界在哪里？有哪些依赖需要对方确认？",
+        "这件事最终 owner 是谁？验收标准和截止时间是什么？"
+      ]
+    };
+
+    function parseOrg() {
+      try { return JSON.parse(document.getElementById('org').value || '[]'); } catch { return []; }
+    }
+
+    async function analyze() {
+      const notes = document.getElementById('notes').value;
+      const question = document.getElementById('question').value;
+      const payload = {
+        question,
+        chat_messages: [{role:'user', content: notes}],
+        uploaded_texts: [],
+        org_chart: parseOrg(),
+        use_llm: false
+      };
+      try {
+        const res = await fetch('/api/v1/workplace/analyze', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error(await res.text());
+        render(await res.json());
+      } catch (err) {
+        render(fallback);
+      }
+    }
+
+    function loadSample() { render(fallback); }
+
+    function render(data) {
+      document.getElementById('summary').textContent = data.summary || '';
+      const nodes = data.graph?.nodes || [];
+      const edges = data.graph?.edges || [];
+      const risks = data.risks || [];
+      document.getElementById('m-people').textContent = nodes.length;
+      document.getElementById('m-edges').textContent = edges.length;
+      document.getElementById('m-risks').textContent = risks.length;
+      renderList('hypotheses', data.hidden_hypotheses || [], true);
+      renderList('risks', risks, false);
+      document.getElementById('questions').innerHTML = (data.recommended_questions || []).map(q => `<div class="card"><p>${escapeHtml(q)}</p></div>`).join('');
+      drawGraph(nodes, edges);
+    }
+
+    function renderList(id, items, hypothesis) {
+      document.getElementById(id).innerHTML = items.map(item => `
+        <div class="card ${hypothesis ? 'hyp' : 'risk'}">
+          <strong>${escapeHtml(item.title || item.category || 'Signal')}</strong>
+          <p>${escapeHtml(item.rationale || item.suggestion || item.evidence_text || '')}</p>
+          <span class="chip">confidence ${Number(item.confidence || 0).toFixed(2)}</span>
+          ${(item.people || []).map(p => `<span class="chip">${escapeHtml(p)}</span>`).join('')}
+        </div>
+      `).join('') || '<p class="small">暂无。</p>';
+    }
+
+    function drawGraph(nodes, edges) {
+      const svg = document.getElementById('graph');
+      const w = svg.clientWidth || 800, h = svg.clientHeight || 600;
+      svg.innerHTML = '';
+      const cx = w / 2, cy = h / 2;
+      const radius = Math.min(w, h) * 0.31;
+      const pos = {};
+      nodes.forEach((n, i) => {
+        const a = -Math.PI / 2 + i * 2 * Math.PI / Math.max(nodes.length, 1);
+        pos[n.id] = {x: cx + Math.cos(a) * radius, y: cy + Math.sin(a) * radius};
+      });
+      edges.forEach(e => {
+        const s = pos[e.source], t = pos[e.target];
+        if (!s || !t) return;
+        line(svg, s.x, s.y, t.x, t.y, e);
+        text(svg, (s.x+t.x)/2, (s.y+t.y)/2 - 8, e.label || e.type || '');
+      });
+      nodes.forEach((n, i) => {
+        const p = pos[n.id]; const color = ['#b85c38','#4b6f8f','#54746b','#8a5f87','#b7892d'][i % 5];
+        const g = el('g', {class:'node'});
+        g.appendChild(el('circle', {cx:p.x, cy:p.y, r:42, fill:color}));
+        g.appendChild(el('text', {x:p.x, y:p.y}, n.label || n.id));
+        svg.appendChild(g);
+        text(svg, p.x, p.y + 62, [n.title, n.team].filter(Boolean).join(' · '));
+      });
+    }
+    function line(svg, x1,y1,x2,y2,e) {
+      const klass = e.risk || ['process_bypass','power_pressure','ownership_ambiguity','credit_blame'].includes(e.type) ? 'edge risk' : e.type === 'formal_reports_to' ? 'edge formal' : e.type === 'supports' ? 'edge support' : 'edge';
+      svg.appendChild(el('line', {class:klass, x1,y1,x2,y2}));
+    }
+    function text(svg, x, y, content) { if (content) svg.appendChild(el('text', {class:'edge-label', x, y, 'text-anchor':'middle'}, content)); }
+    function el(name, attrs={}, content='') {
+      const node = document.createElementNS('http://www.w3.org/2000/svg', name);
+      Object.entries(attrs).forEach(([k,v]) => node.setAttribute(k, v));
+      if (content) node.textContent = content;
+      return node;
+    }
+    function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[s])); }
+    window.addEventListener('resize', () => render(fallback));
+    render(fallback);
+  </script>
+</body>
+</html>

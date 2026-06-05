@@ -1,0 +1,419 @@
+import unittest
+from docthinker.memory_core import (
+    AgentMemoryBackends,
+    AgentMemoryCore,
+    InMemoryLongHorizonBackend,
+    MemoryPolicy,
+)
+
+
+class _FakeClawManager:
+    def __init__(self):
+        self.updated = False
+
+    async def build_memory_context(self, query, *, enable_archive=True):
+        return f"memory for {query}"
+
+    async def post_query_update(self, question, answer, session_id=None, timestamp=None):
+        self.updated = True
+
+
+class _FakeExpandedManager:
+    def __init__(self):
+        self.hit_entities = []
+        self.usage_recorded = False
+
+    def match_nodes(self, *, query, top_k=2, min_score=0.2, memory_terms=None):
+        return [
+            {
+                "entity": "Working Memory",
+                "description": "A short-lived agent memory layer",
+                "score": 0.9,
+                "root_ids": ["Agent Memory"],
+            }
+        ][:top_k]
+
+    def mark_hits(self, entities):
+        self.hit_entities.extend(entities)
+
+    def build_forced_instruction(self, matches, *, limit=2):
+        names = ", ".join(m["entity"] for m in matches[:limit])
+        return f"use expanded nodes: {names}"
+
+    def record_response_usage(self, *, answer, matches, attached_entities=None):
+        self.usage_recorded = True
+        return {"used": ["Working Memory"], "promoted": []}
+
+
+class _FakeEpisode:
+    episode_id = "ep-1"
+    summary = "A previous agent solved a planning problem by recalling recent goals."
+    source_type = "chat"
+    concepts = ["planning", "goals"]
+    entity_ids = ["Agent Memory"]
+
+
+class _FakeMemoryEngine:
+    def __init__(self):
+        self.added = False
+
+    async def retrieve_analogies(self, query, *, top_k=10, then_spread=True, spread_top_k=5):
+        return [(_FakeEpisode(), 0.82, "similar goal-driven recall")]
+
+    async def add_observation(self, **kwargs):
+        self.added = True
+        return _FakeEpisode()
+
+
+class _ProtocolConversationBackend:
+    def __init__(self):
+        self.consolidated = False
+
+    async def build_context(self, session_id, query):
+        return f"protocol memory {session_id}: {query}"
+
+    async def consolidate(self, session_id, question, answer):
+        self.consolidated = True
+        return True
+
+
+class _ProtocolEpisodicBackend:
+    def __init__(self):
+        self.written = False
+        self.last_top_k = None
+
+    async def retrieve(self, session_id, query, *, top_k):
+        self.last_top_k = top_k
+        return [{
+            "episode_id": "proto-ep",
+            "summary": "Protocol backend recalled a reusable agent habit.",
+            "score": 0.7,
+            "reason": "same memory contract",
+        }]
+
+    async def write(self, session_id, question, answer, *, concepts, timestamp):
+        self.written = True
+        return "proto-ep-new"
+
+
+class _ProtocolExpandedBackend:
+    def __init__(self):
+        self.recorded = False
+        self.last_top_k = None
+        self.last_min_score = None
+
+    def match(self, session_id, query, *, top_k, min_score):
+        self.last_top_k = top_k
+        self.last_min_score = min_score
+        return [{"entity": "Protocol Memory", "score": 0.8, "root_ids": ["Agent Memory"]}]
+
+    def build_instruction(self, session_id, matches, *, limit):
+        return "use protocol expanded memory"
+
+    def record_usage(self, session_id, answer, matches, *, attached_entities):
+        self.recorded = True
+        return ["Protocol Memory"]
+
+    def get_record(self, session_id, name):
+        return {"description": "A backend supplied by a plugin.", "root_ids": []}
+
+
+class _ProtocolGraphBackend:
+    def __init__(self):
+        self.promoted = []
+
+    async def promote(self, session_id, promoted_names, *, answer_entities, expanded_backend):
+        self.promoted = list(promoted_names)
+        return self.promoted
+
+
+class AgentMemoryCoreUnitTest(unittest.IsolatedAsyncioTestCase):
+    async def test_recall_merges_claw_context_and_expanded_nodes(self):
+        claw = _FakeClawManager()
+        expanded = _FakeExpandedManager()
+        core = AgentMemoryCore(
+            get_claw_manager=lambda _sid: claw,
+            get_expanded_node_manager=lambda _sid: expanded,
+            get_session_rag=lambda _sid: None,
+        )
+
+        bundle = await core.recall(
+            session_id="#00001",
+            query="what should the agent remember?",
+            base_instruction="base",
+            mode="hybrid",
+            enable_thinking=True,
+            enable_expanded_matching=True,
+        )
+
+        self.assertIn("base", bundle.retrieval_instruction)
+        self.assertIn("memory for what should the agent remember?", bundle.retrieval_instruction)
+        self.assertIn("use expanded nodes: Working Memory", bundle.retrieval_instruction)
+        self.assertEqual(1, len(bundle.memory_summaries))
+        self.assertEqual(1, len(bundle.expanded_matches))
+        self.assertEqual(["Working Memory"], expanded.hit_entities)
+        self.assertTrue(bundle.trace.memory_context_injected)
+        self.assertEqual(1, bundle.trace.expanded_hits)
+
+    async def test_recall_includes_episodic_analogies(self):
+        memory = _FakeMemoryEngine()
+        core = AgentMemoryCore(
+            get_claw_manager=lambda _sid: None,
+            get_expanded_node_manager=lambda _sid: None,
+            get_session_rag=lambda _sid: None,
+            get_memory_engine=lambda _sid: memory,
+        )
+
+        bundle = await core.recall(
+            session_id="#00001",
+            query="how should the agent use memory?",
+            enable_thinking=True,
+            enable_expanded_matching=False,
+        )
+
+        self.assertEqual(1, len(bundle.episodic_matches))
+        self.assertIn("情节记忆与类比参考", bundle.retrieval_instruction)
+        self.assertEqual(1, bundle.trace.episodic_hits)
+        self.assertTrue(any(e["type"] == "episodic_recall" for e in bundle.trace.events))
+
+    async def test_after_response_updates_memory_layers(self):
+        claw = _FakeClawManager()
+        expanded = _FakeExpandedManager()
+        memory = _FakeMemoryEngine()
+        core = AgentMemoryCore(
+            get_claw_manager=lambda _sid: claw,
+            get_expanded_node_manager=lambda _sid: expanded,
+            get_session_rag=lambda _sid: None,
+            get_memory_engine=lambda _sid: memory,
+            ingest_chat_turn=None,
+            chat_turn_ingest_enabled=lambda: False,
+        )
+
+        result = await core.after_response(
+            session_id="#00001",
+            question="q",
+            answer="Working Memory is useful for recent context.",
+            matched_expanded=[{"entity": "Working Memory", "score": 0.9}],
+        )
+
+        self.assertTrue(result["updated"])
+        self.assertTrue(result["claw_updated"])
+        self.assertTrue(claw.updated)
+        self.assertTrue(result["episode_added"])
+        self.assertTrue(memory.added)
+        self.assertTrue(expanded.usage_recorded)
+
+    async def test_accepts_protocol_backends_for_plugin_usage(self):
+        conversation = _ProtocolConversationBackend()
+        episodic = _ProtocolEpisodicBackend()
+        expanded = _ProtocolExpandedBackend()
+        graph = _ProtocolGraphBackend()
+        core = AgentMemoryCore(
+            backends=AgentMemoryBackends(
+                conversation=conversation,
+                episodic=episodic,
+                expanded=expanded,
+                graph=graph,
+            )
+        )
+
+        bundle = await core.recall(
+            session_id="plugin-session",
+            query="how can plugins provide memory?",
+            enable_thinking=True,
+            enable_expanded_matching=True,
+        )
+        self.assertIn("protocol memory plugin-session", bundle.retrieval_instruction)
+        self.assertIn("Protocol backend recalled", bundle.retrieval_instruction)
+        self.assertIn("use protocol expanded memory", bundle.retrieval_instruction)
+
+        result = await core.after_response(
+            session_id="plugin-session",
+            question="q",
+            answer="Protocol Memory should be promoted.",
+            matched_expanded=bundle.expanded_matches,
+        )
+        self.assertTrue(result["claw_updated"])
+        self.assertTrue(result["episode_added"])
+        self.assertEqual(["Protocol Memory"], result["expanded_promoted"])
+        self.assertTrue(conversation.consolidated)
+        self.assertTrue(episodic.written)
+        self.assertTrue(expanded.recorded)
+        self.assertEqual(["Protocol Memory"], graph.promoted)
+
+    async def test_memory_policy_controls_layers_and_recall_breadth(self):
+        conversation = _ProtocolConversationBackend()
+        episodic = _ProtocolEpisodicBackend()
+        expanded = _ProtocolExpandedBackend()
+        graph = _ProtocolGraphBackend()
+        core = AgentMemoryCore(
+            backends=AgentMemoryBackends(
+                conversation=conversation,
+                episodic=episodic,
+                expanded=expanded,
+                graph=graph,
+            ),
+            policy=MemoryPolicy(
+                episodic_top_k=1,
+                expanded_top_k=4,
+                expanded_min_score=0.55,
+                enabled_layers=("episodic", "expanded"),
+            ),
+        )
+
+        bundle = await core.recall(
+            session_id="policy-session",
+            query="policy driven memory",
+            enable_thinking=True,
+            enable_expanded_matching=True,
+        )
+
+        self.assertNotIn("protocol memory policy-session", bundle.retrieval_instruction)
+        self.assertIn("Protocol backend recalled", bundle.retrieval_instruction)
+        self.assertEqual(1, episodic.last_top_k)
+        self.assertEqual(4, expanded.last_top_k)
+        self.assertEqual(0.55, expanded.last_min_score)
+
+        result = await core.after_response(
+            session_id="policy-session",
+            question="q",
+            answer="Protocol Memory should be remembered.",
+            matched_expanded=bundle.expanded_matches,
+        )
+        self.assertFalse(result["claw_updated"])
+        self.assertEqual([], graph.promoted)
+        self.assertEqual(["episodic", "expanded"], result["memory_trace"]["consolidation"]["enabled_layers"])
+
+    async def test_long_horizon_memory_consolidates_and_guides_later_recall(self):
+        long_horizon = InMemoryLongHorizonBackend()
+        core = AgentMemoryCore(
+            backends=AgentMemoryBackends(long_horizon=long_horizon),
+            policy=MemoryPolicy(
+                enabled_layers=("long_horizon",),
+                long_horizon_top_k=2,
+            ),
+        )
+
+        result = await core.after_response(
+            session_id="long-session",
+            question="DocThinker 的长期记忆架构应该怎么优化？",
+            answer="DocThinker should use long-horizon memory to consolidate cross-turn insights and guide recall planning.",
+            matched_expanded=[{"entity": "Long Horizon Memory", "score": 0.8}],
+        )
+
+        self.assertTrue(result["long_horizon_insight_added"])
+        self.assertEqual("project_state", result["long_horizon_insight"]["kind"])
+
+        bundle = await core.recall(
+            session_id="long-session",
+            query="long-horizon memory recall planning 怎么做？",
+            enable_thinking=False,
+            enable_expanded_matching=False,
+        )
+
+        self.assertEqual(1, bundle.trace.long_horizon_hits)
+        self.assertEqual(1, len(bundle.long_horizon_matches))
+        self.assertIn("长期记忆与跨回合推理", bundle.retrieval_instruction)
+        self.assertIn("Memory-side reasoning", bundle.retrieval_instruction)
+        self.assertEqual("planning", bundle.trace.recall_plan["question_type"])
+        self.assertEqual("memory_reasoning", bundle.memory_reasoning["mode"])
+        self.assertIn("continue_project_state", bundle.memory_reasoning["conclusions"])
+        self.assertEqual(1, long_horizon.stats("long-session")["count"])
+
+    async def test_long_horizon_memory_is_auditable_and_deletable(self):
+        long_horizon = InMemoryLongHorizonBackend()
+        stored = long_horizon.consolidate(
+            "audit-session",
+            "记住 DocThinker 的 memory 管理规则",
+            "DocThinker should keep auditable long-horizon memory with explicit user control and memory-side reasoning.",
+            concepts=["DocThinker", "memory"],
+            scope="session",
+            timestamp=1.0,
+        )
+
+        self.assertIsNotNone(stored)
+        items = long_horizon.list_insights("audit-session")
+        self.assertEqual(1, len(items))
+        exported = long_horizon.export_markdown("audit-session")
+        self.assertIn("# DocThinker MEMORY.md", exported)
+        self.assertIn("What Not To Save", exported)
+        self.assertIn("auditable long-horizon memory", exported)
+        plan = long_horizon.plan_edit(
+            "audit-session",
+            "把 DocThinker 的 memory 管理规则改成可审计、可控、支持推理",
+        )
+        self.assertEqual("update", plan["action"])
+        self.assertEqual(1, len(plan["candidates"]))
+        updated = long_horizon.update_insight(
+            stored["id"],
+            {"summary": "DocThinker memory should be auditable, controllable, and reasoning-capable."},
+            "audit-session",
+        )
+        self.assertIsNotNone(updated)
+        self.assertIn("reasoning-capable", updated["summary"])
+        self.assertEqual("natural_language_memory_edit", long_horizon.last_write_decision()["reason"])
+        self.assertTrue(long_horizon.delete_insight(stored["id"], "audit-session"))
+        self.assertEqual(0, long_horizon.stats("audit-session")["count"])
+
+    async def test_long_horizon_memory_skips_secrets_and_ephemeral_logs(self):
+        long_horizon = InMemoryLongHorizonBackend()
+        secret = long_horizon.consolidate(
+            "guard-session",
+            "保存这个 token",
+            "The API key is sk-test123456789012345678901234567890 and should never be retained.",
+            concepts=["token"],
+            scope="session",
+            timestamp=1.0,
+        )
+        self.assertIsNone(secret)
+        self.assertEqual("secret_guard", long_horizon.last_write_decision()["reason"])
+
+        transient = long_horizon.consolidate(
+            "guard-session",
+            "帮我看这个 debug log",
+            "The stack trace in /tmp/run.log points to line 42 and only matters for this temporary failure.",
+            concepts=["debug"],
+            scope="session",
+            timestamp=2.0,
+        )
+        self.assertIsNone(transient)
+        self.assertEqual("ephemeral_or_verification_needed", long_horizon.last_write_decision()["reason"])
+        self.assertEqual(0, long_horizon.stats("guard-session")["count"])
+
+    async def test_after_response_can_skip_or_exclude_memory_writes(self):
+        conversation = _ProtocolConversationBackend()
+        episodic = _ProtocolEpisodicBackend()
+        long_horizon = InMemoryLongHorizonBackend()
+        core = AgentMemoryCore(
+            backends=AgentMemoryBackends(
+                conversation=conversation,
+                episodic=episodic,
+                long_horizon=long_horizon,
+            )
+        )
+
+        skipped = await core.after_response(
+            session_id="control-session",
+            question="do not remember this",
+            answer="This answer should not be written to any memory backend.",
+            remember=False,
+        )
+        self.assertTrue(skipped["memory_write_skipped"])
+        self.assertFalse(conversation.consolidated)
+        self.assertFalse(episodic.written)
+        self.assertEqual(0, long_horizon.stats("control-session")["count"])
+
+        partial = await core.after_response(
+            session_id="control-session",
+            question="only conversation should skip",
+            answer="Long horizon should remember this useful project constraint.",
+            excluded_layers=("conversation",),
+        )
+        self.assertFalse(partial["claw_updated"])
+        self.assertTrue(partial["episode_added"])
+        self.assertTrue(partial["long_horizon_insight_added"])
+        self.assertEqual(["conversation"], partial["excluded_layers"])
+
+
+if __name__ == "__main__":
+    unittest.main()

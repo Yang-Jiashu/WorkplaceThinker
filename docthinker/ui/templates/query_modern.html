@@ -1,0 +1,1412 @@
+{% extends "base_modern.html" %}
+
+{% block title %}智能对话 - DocThinker{% endblock %}
+
+{% block extra_css %}
+<style>
+    :root {
+        --dt-ink: #292520;
+        --dt-muted: #766f66;
+        --dt-hairline: #ded8cc;
+        --dt-paper: #fbfaf7;
+        --dt-copper: #b85c38;
+        --dt-sage: #54746b;
+        --dt-lake: #4b6f8f;
+        --dt-ochre: #b7892d;
+    }
+    .query-shell {
+        background: linear-gradient(180deg, #FAF8F5 0%, #F7F1EA 100%);
+    }
+    .mode-card {
+        min-height: 76px;
+        transition: all 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        border: 1px solid rgba(232, 221, 211, 0.78);
+        background: rgba(255, 255, 255, 0.86);
+        position: relative;
+        overflow: hidden;
+        border-radius: 20px !important;
+    }
+    .mode-card:hover {
+        border-color: rgba(217, 119, 87, 0.32);
+        background: #FFFFFF;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(193, 165, 140, 0.14);
+    }
+    .mode-card.active {
+        border-color: rgba(217, 119, 87, 0.45);
+        background: #F5E6D3;
+        box-shadow: inset 0 0 0 1px rgba(217, 119, 87, 0.1), 0 10px 26px rgba(193, 165, 140, 0.16);
+    }
+    .mode-card.active::before {
+        content: "";
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        top: 0;
+        height: 3px;
+        border-radius: 0 0 999px 999px;
+        background: #D97757;
+    }
+    .mode-icon {
+        width: 28px;
+        height: 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px;
+        background: #f7f3ea;
+        border: 1px solid #e7dfd1;
+    }
+    .composer-bar {
+        border: 1px solid #ded8cc;
+        border-radius: 24px;
+        background: #FFFFFF;
+        box-shadow: 0 10px 32px rgba(193, 165, 140, 0.16);
+    }
+    .composer-action {
+        width: 36px;
+        height: 36px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        transition: all 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+    .composer-action:hover {
+        transform: translateY(-2px);
+    }
+    .assistant-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 14px;
+        background: linear-gradient(180deg, #fff7ed 0%, #f7f3ea 100%);
+        color: #292520;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        border: 1px solid #ded8cc;
+        box-shadow: 0 8px 18px rgba(193, 165, 140, 0.18);
+    }
+    .assistant-avatar::before {
+        content: "D";
+        width: 18px;
+        height: 18px;
+        border-radius: 7px;
+        display: grid;
+        place-items: center;
+        background: #292520;
+        color: #fffefa;
+        font-size: 11px;
+        font-weight: 760;
+    }
+
+    .message-user {
+        background: #292520;
+        color: #fffefa;
+    }
+
+    .message-bot {
+        background: #fffefa;
+        border: 1px solid #ded8cc;
+    }
+
+    .file-tag {
+        background: #fbede6;
+        color: #8f4329;
+        padding: 4px 9px;
+        border: 1px solid #efcfc0;
+        border-radius: 999px;
+        font-size: 12px;
+        margin-right: 4px;
+    }
+
+    .processing-ring {
+        width: 20px;
+        height: 20px;
+        border: 2px solid #ded8cc;
+        border-top-color: #b85c38;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .progress-container {
+        background: #e7dfd1;
+        border-radius: 999px;
+        overflow: hidden;
+        height: 6px;
+    }
+
+    .progress-fill {
+        background: linear-gradient(90deg, #b85c38, #54746b);
+        height: 100%;
+        transition: width 0.3s ease;
+    }
+
+    .status-processing {
+        color: #b85c38;
+    }
+
+    .status-done {
+        color: #54746b;
+    }
+
+    .status-error {
+        color: #ef4444;
+    }
+
+    /* GPT-style deep thinking block */
+    .deep-think-block {
+        border-left: 2px solid #ded8cc;
+        margin-bottom: 10px;
+        padding-left: 14px;
+        position: relative;
+    }
+    .deep-think-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        user-select: none;
+        font-size: 13px;
+        color: #766f66;
+        padding: 4px 0;
+    }
+    .deep-think-header:hover { color: #b85c38; }
+    .deep-think-header .dt-icon { font-size: 12px; }
+    .deep-think-header .dt-arrow {
+        font-size: 10px;
+        transition: transform 0.2s;
+        margin-left: 2px;
+    }
+    .deep-think-header .dt-arrow.open { transform: rotate(180deg); }
+    .deep-think-body {
+        overflow: hidden;
+        transition: max-height 0.3s ease;
+    }
+    .deep-think-body.collapsed { max-height: 0 !important; }
+    .deep-think-steps {
+        padding: 4px 0 8px 0;
+    }
+    .deep-think-step {
+        font-size: 13px;
+        color: #766f66;
+        font-style: italic;
+        line-height: 1.6;
+        padding: 1px 0;
+    }
+    @keyframes dt-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+    .deep-think-block.thinking .deep-think-header {
+        animation: dt-pulse 1.5s ease-in-out infinite;
+    }
+    .memory-inspector {
+        width: 360px;
+        border-left: 1px solid #ded8cc;
+        background: rgba(255, 254, 250, 0.96);
+    }
+    .memory-metric {
+        background: linear-gradient(180deg, #fffefa 0%, #f7f3ea 100%);
+        border: 1px solid #ded8cc;
+        border-radius: 8px;
+        padding: 10px;
+    }
+    .memory-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        max-width: 100%;
+        border-radius: 999px;
+        border: 1px solid #ded8cc;
+        background: #f8f2e8;
+        color: #5f584f;
+        padding: 3px 8px;
+        font-size: 11px;
+        line-height: 1.4;
+    }
+    .memory-timeline-item {
+        position: relative;
+        padding-left: 18px;
+        color: #5f584f;
+        font-size: 12px;
+        line-height: 1.45;
+    }
+    .memory-timeline-item::before {
+        content: "";
+        position: absolute;
+        left: 4px;
+        top: 5px;
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: #b85c38;
+    }
+    .memory-timeline-item::after {
+        content: "";
+        position: absolute;
+        left: 7px;
+        top: 14px;
+        bottom: -10px;
+        width: 1px;
+        background: #ded8cc;
+    }
+    .memory-timeline-item:last-child::after {
+        display: none;
+    }
+    @media (max-width: 1024px) {
+        .memory-inspector {
+            display: none;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="bg-[#fffefa] border-b border-[#ded8cc] px-6 py-4 flex items-center justify-between shrink-0">
+    <div>
+        <p class="text-[11px] font-bold uppercase text-[#b85c38]">DocThinker Conversation</p>
+        <h2 class="text-lg font-semibold text-[#292520] mt-0.5">智能对话</h2>
+        <p class="text-sm text-[#766f66]">在纯文本、图文载体、记忆与知识图谱之间进行自然语言探索</p>
+    </div>
+    <div class="flex items-center gap-3">
+        <select id="session-selector" class="input-field px-3 py-2 rounded-lg text-sm min-w-[200px]" onchange="handleSessionSwitch(this.value)"></select>
+        <button onclick="clearChat()" class="dt-header-button">
+            <i class="fa-solid fa-plus"></i>
+            新对话
+        </button>
+    </div>
+</header>
+
+<div class="flex-1 flex overflow-hidden query-shell">
+    <div class="flex-1 flex flex-col min-w-0">
+        <div id="chat-messages" class="flex-1 overflow-y-auto p-6 space-y-4">
+            <div class="flex gap-3">
+                <div class="assistant-avatar">
+                </div>
+                <div class="flex-1 max-w-2xl">
+                    <div class="message-bot rounded-2xl rounded-tl-sm px-4 py-3">
+                        <p class="text-[#292520]">你好，我是 DocThinker，你的 AI 知识助手。</p>
+                        <p class="text-[#766f66] text-sm mt-2">我可以帮你：</p>
+                        <ul class="text-[#5f584f] text-sm mt-1 space-y-1">
+                            <li>处理纯文本输入和图文交互载体</li>
+                            <li>在图片、文字与会话之间形成可召回记忆</li>
+                            <li>通过知识图谱关联和扩展信息</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-[#fffefa] border-t border-[#ded8cc] p-4">
+            <div class="flex gap-3 mb-4">
+                <button onclick="setMode('quick')" id="mode-quick" class="mode-card flex-1 px-4 py-3 rounded-xl bg-[#fffefa] text-left">
+                    <div class="flex items-center gap-2">
+                        <span class="mode-icon"><i class="fa-solid fa-bolt text-[#b7892d]"></i></span>
+                        <span class="font-medium text-sm text-[#292520]">快速</span>
+                    </div>
+                    <p class="text-xs text-[#766f66] mt-1">向量检索，极速响应</p>
+                </button>
+                <button onclick="setMode('standard')" id="mode-standard" class="mode-card active flex-1 px-4 py-3 rounded-xl bg-[#fffefa] text-left">
+                    <div class="flex items-center gap-2">
+                        <span class="mode-icon"><i class="fa-solid fa-scale-balanced text-[#4b6f8f]"></i></span>
+                        <span class="font-medium text-sm text-[#292520]">标准</span>
+                    </div>
+                    <p class="text-xs text-[#766f66] mt-1">知识图谱检索</p>
+                </button>
+                <button onclick="setMode('deep')" id="mode-deep" class="mode-card flex-1 px-4 py-3 rounded-xl bg-[#fffefa] text-left">
+                    <div class="flex items-center gap-2">
+                        <span class="mode-icon"><i class="fa-solid fa-brain text-[#8a5f87]"></i></span>
+                        <span class="font-medium text-sm text-[#292520]">深度</span>
+                    </div>
+                    <p class="text-xs text-[#766f66] mt-1">KG + 向量 + 记忆 + 扩展</p>
+                </button>
+            </div>
+
+            <div class="mb-3 flex items-center justify-between gap-3 text-xs text-[#766f66]">
+                <button
+                    onclick="toggleRememberTurn()"
+                    id="remember-toggle"
+                    class="dt-mini-button flex items-center gap-2"
+                    title="控制本轮回答是否写入长期、情节、对话和扩展记忆"
+                >
+                    <i id="remember-toggle-icon" class="fa-solid fa-toggle-on text-[#54746b]"></i>
+                    <span id="remember-toggle-text">写入记忆</span>
+                </button>
+                <span id="remember-toggle-hint">本轮会进入可控记忆巩固</span>
+            </div>
+
+            <div id="attached-files" class="hidden flex flex-wrap gap-2 mb-3"></div>
+            <div id="processing-list" class="space-y-2 mb-3"></div>
+
+            <div class="relative composer-bar">
+                <textarea
+                    id="message-input"
+                    placeholder="输入你的问题..."
+                    class="w-full px-4 py-3 pr-24 rounded-[15px] resize-none text-[#292520] bg-transparent placeholder:text-[#9b9287] focus:outline-none"
+                    rows="2"
+                    onkeydown="handleKeyDown(event)"
+                ></textarea>
+
+                <input type="file" id="file-input" style="display: none;" onchange="handleFileSelect(this)">
+
+                <div class="absolute right-2 bottom-2 flex items-center gap-1">
+                    <button onclick="document.getElementById('file-input').click()" class="composer-action text-[#9b9287] hover:text-[#b85c38] hover:bg-[#fbede6]" title="上传文件">
+                        <i class="fa-solid fa-paperclip"></i>
+                    </button>
+
+                    <button onclick="sendMessage()" class="composer-action btn-primary shadow-sm" title="发送">
+                        <i class="fa-solid fa-paper-plane text-sm"></i>
+                    </button>
+                </div>
+            </div>
+
+            <p class="text-xs text-[#9b9287] mt-2 text-center">按 Enter 发送，Shift+Enter 换行</p>
+        </div>
+    </div>
+
+    <aside class="memory-inspector shrink-0 overflow-y-auto">
+        <div class="p-5 space-y-4">
+            <div>
+                <div class="flex items-center justify-between">
+                    <h3 class="text-sm font-semibold text-[#292520] flex items-center gap-2">
+                        <i class="fa-solid fa-diagram-project text-[#b85c38]"></i>
+                        Memory Inspector
+                    </h3>
+                    <span id="memory-inspector-mode" class="text-[11px] px-2 py-1 rounded-full bg-[#eee7da] text-[#5f584f]">idle</span>
+                </div>
+                <p class="text-xs text-[#766f66] mt-1">查看本轮回答使用了哪些记忆、图谱候选和证据。</p>
+            </div>
+
+            <div id="memory-empty" class="bg-[#fffefa] border border-dashed border-[#ded8cc] rounded-lg p-4 text-center">
+                <i class="fa-solid fa-brain text-[#d8cfc1] text-2xl"></i>
+                <p class="text-sm text-[#766f66] mt-2">发送一个问题后，这里会显示记忆召回路径。</p>
+            </div>
+
+            <div id="memory-content" class="hidden space-y-4">
+                <div class="grid grid-cols-4 gap-2">
+                    <div class="memory-metric">
+                        <p class="text-[11px] text-[#766f66]">记忆源</p>
+                        <p id="memory-metric-sources" class="text-xl font-semibold text-[#292520]">0</p>
+                    </div>
+                    <div class="memory-metric">
+                        <p class="text-[11px] text-[#766f66]">Episodes</p>
+                        <p id="memory-metric-episodic" class="text-xl font-semibold text-[#54746b]">0</p>
+                    </div>
+                    <div class="memory-metric">
+                        <p class="text-[11px] text-[#766f66]">Expanded</p>
+                        <p id="memory-metric-expanded" class="text-xl font-semibold text-[#8a5f87]">0</p>
+                    </div>
+                    <div class="memory-metric">
+                        <p class="text-[11px] text-[#766f66]">Long</p>
+                        <p id="memory-metric-long" class="text-xl font-semibold text-[#b85c38]">0</p>
+                    </div>
+                </div>
+
+                <section class="bg-[#fffefa] border border-[#ded8cc] rounded-lg p-3">
+                    <h4 class="text-xs font-semibold text-[#292520] flex items-center gap-2">
+                        <i class="fa-solid fa-route text-[#4b6f8f]"></i>
+                        Recall Timeline
+                    </h4>
+                    <div id="memory-timeline" class="mt-3 space-y-3"></div>
+                </section>
+
+                <section class="bg-[#fffefa] border border-[#ded8cc] rounded-lg p-3">
+                    <h4 class="text-xs font-semibold text-[#292520] flex items-center gap-2">
+                        <i class="fa-solid fa-infinity text-[#b85c38]"></i>
+                        Long-horizon Memory
+                    </h4>
+                    <div id="memory-long-horizon" class="mt-3 space-y-2"></div>
+                </section>
+
+                <section class="bg-[#fffefa] border border-[#ded8cc] rounded-lg p-3">
+                    <h4 class="text-xs font-semibold text-[#292520] flex items-center gap-2">
+                        <i class="fa-solid fa-clock-rotate-left text-[#54746b]"></i>
+                        Episodic Matches
+                    </h4>
+                    <div id="memory-episodic" class="mt-3 space-y-2"></div>
+                </section>
+
+                <section class="bg-[#fffefa] border border-[#ded8cc] rounded-lg p-3">
+                    <h4 class="text-xs font-semibold text-[#292520] flex items-center gap-2">
+                        <i class="fa-solid fa-seedling text-[#8a5f87]"></i>
+                        Expanded Nodes
+                    </h4>
+                    <div id="memory-expanded" class="mt-3 space-y-2"></div>
+                </section>
+
+                <section class="bg-[#fffefa] border border-[#ded8cc] rounded-lg p-3">
+                    <h4 class="text-xs font-semibold text-[#292520] flex items-center gap-2">
+                        <i class="fa-solid fa-link text-[#4b6f8f]"></i>
+                        Evidence Sources
+                    </h4>
+                    <div id="memory-sources" class="mt-3 space-y-2"></div>
+                </section>
+            </div>
+        </div>
+    </aside>
+</div>
+
+<div id="loading" class="hidden absolute inset-0 bg-black/10 flex items-center justify-center z-50">
+    <div class="bg-[#fffefa] border border-[#ded8cc] rounded-xl p-4 flex items-center gap-3 shadow-lg">
+        <i class="fa-solid fa-circle-notch fa-spin text-[#b85c38]"></i>
+        <span class="text-sm text-[#5f584f]">思考中...</span>
+    </div>
+</div>
+
+<script>
+let currentMode = 'standard';
+let currentFile = null;
+let currentSessionId = null;
+let rememberTurn = true;
+let processingFilesCount = 0;
+let defaultWelcomeHtml = '';
+let latestMemoryInspector = null;
+
+function getStoredSessionId() {
+    try {
+        return localStorage.getItem('current_session_id') || '';
+    } catch (_) {
+        return '';
+    }
+}
+
+function setStoredSessionId(sessionId) {
+    try {
+        if (sessionId) {
+            localStorage.setItem('current_session_id', String(sessionId));
+        }
+    } catch (_) {}
+}
+
+function clearUiAttachments() {
+    const attached = document.getElementById('attached-files');
+    if (attached) {
+        attached.innerHTML = '';
+        attached.classList.add('hidden');
+    }
+    const processing = document.getElementById('processing-list');
+    if (processing) {
+        processing.innerHTML = '';
+        processing.classList.add('hidden');
+    }
+    currentFile = null;
+    processingFilesCount = 0;
+}
+
+function renderWelcome() {
+    const container = document.getElementById('chat-messages');
+    if (!container) return;
+    container.innerHTML = defaultWelcomeHtml;
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function formatScore(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '-';
+    return n.toFixed(2);
+}
+
+function summarizeTraceEvent(event) {
+    const type = String(event?.type || 'event');
+    if (type === 'memory_context') {
+        return `Claw 对话记忆注入，约 ${event.chars || 0} 字符`;
+    }
+    if (type === 'episodic_recall') {
+        return `Neuro Memory 召回 ${event.count || 0} 条相似 episode`;
+    }
+    if (type === 'expanded_match') {
+        return `Expanded KG 匹配 ${event.count || 0} 个候选节点`;
+    }
+    if (type === 'recall_plan') {
+        return `Recall Plan: ${event.question_type || 'general'} · ${(event.layers || []).join(' / ')}`;
+    }
+    if (type === 'long_horizon_recall') {
+        return `Long-horizon Memory 召回 ${event.count || 0} 条长期线索`;
+    }
+    if (type === 'memory_reasoning') {
+        const conclusions = Array.isArray(event.conclusions) ? event.conclusions.join(' / ') : '';
+        return `Memory Reasoning: ${event.question_type || 'general'}${conclusions ? ' · ' + conclusions : ''}`;
+    }
+    return `${type}: ${JSON.stringify(event)}`;
+}
+
+function resetMemoryInspector(mode = 'idle') {
+    latestMemoryInspector = null;
+    const empty = document.getElementById('memory-empty');
+    const content = document.getElementById('memory-content');
+    const modeEl = document.getElementById('memory-inspector-mode');
+    if (empty) empty.classList.remove('hidden');
+    if (content) content.classList.add('hidden');
+    if (modeEl) modeEl.textContent = mode;
+}
+
+function renderMemoryInspector(metaPatch = {}) {
+    latestMemoryInspector = { ...(latestMemoryInspector || {}), ...(metaPatch || {}) };
+    const meta = latestMemoryInspector || {};
+    const trace = meta.memory_trace || {};
+    const recall = trace.recall || {};
+    const events = Array.isArray(trace.events) ? trace.events : [];
+    const episodic = Array.isArray(meta.episodic_matches) ? meta.episodic_matches : [];
+    const expanded = Array.isArray(meta.expanded_matches) ? meta.expanded_matches : [];
+    const longHorizon = Array.isArray(meta.long_horizon_matches) ? meta.long_horizon_matches : [];
+    const sources = Array.isArray(meta.sources) ? meta.sources : [];
+
+    const empty = document.getElementById('memory-empty');
+    const content = document.getElementById('memory-content');
+    const modeEl = document.getElementById('memory-inspector-mode');
+    if (empty) empty.classList.add('hidden');
+    if (content) content.classList.remove('hidden');
+    if (modeEl) {
+        modeEl.textContent = meta.mode || meta.answer_mode || 'session';
+        modeEl.className = 'text-[11px] px-2 py-1 rounded-full bg-[#fbede6] text-[#8f4329]';
+    }
+
+    const memorySources = recall.memory_sources ?? meta.memory_summaries?.length ?? 0;
+    document.getElementById('memory-metric-sources').textContent = memorySources;
+    document.getElementById('memory-metric-episodic').textContent = recall.episodic_hits ?? episodic.length;
+    document.getElementById('memory-metric-expanded').textContent = recall.expanded_hits ?? expanded.length;
+    document.getElementById('memory-metric-long').textContent = recall.long_horizon_hits ?? longHorizon.length;
+
+    const timeline = document.getElementById('memory-timeline');
+    if (timeline) {
+        if (events.length === 0) {
+            timeline.innerHTML = '<p class="text-xs text-[#9b9287]">本轮没有记忆事件。</p>';
+        } else {
+            timeline.innerHTML = events.map((event) => (
+                `<div class="memory-timeline-item">${escapeHtml(summarizeTraceEvent(event))}</div>`
+            )).join('');
+        }
+    }
+
+    const episodicEl = document.getElementById('memory-episodic');
+    if (episodicEl) {
+        episodicEl.innerHTML = episodic.length ? episodic.map((item) => {
+            const concepts = Array.isArray(item.concepts) ? item.concepts.slice(0, 3) : [];
+            return `<div class="rounded-lg border border-[#d9e3d6] bg-[#eef3ed] p-2">
+                <div class="flex items-start justify-between gap-2">
+                    <p class="text-xs font-medium text-[#292520] line-clamp-2">${escapeHtml(item.summary || 'Episode')}</p>
+                    <span class="text-[11px] text-[#54746b]">${formatScore(item.score)}</span>
+                </div>
+                ${item.reason ? `<p class="text-[11px] text-[#766f66] mt-1">${escapeHtml(item.reason)}</p>` : ''}
+                ${concepts.length ? `<div class="mt-2 flex flex-wrap gap-1">${concepts.map((c) => `<span class="memory-chip">${escapeHtml(c)}</span>`).join('')}</div>` : ''}
+            </div>`;
+        }).join('') : '<p class="text-xs text-[#9b9287]">没有 episode 匹配。</p>';
+    }
+
+    const longEl = document.getElementById('memory-long-horizon');
+    if (longEl) {
+        longEl.innerHTML = longHorizon.length ? longHorizon.map((item) => {
+            const concepts = Array.isArray(item.concepts) ? item.concepts.slice(0, 4) : [];
+            return `<div class="rounded-lg border border-[#ead8ca] bg-[#fff7f0] p-2">
+                <div class="flex items-start justify-between gap-2">
+                    <p class="text-xs font-medium text-[#292520] line-clamp-2">${escapeHtml(item.summary || 'Long-horizon insight')}</p>
+                    <span class="text-[11px] text-[#b85c38]">${formatScore(item.score || item.confidence)}</span>
+                </div>
+                <p class="text-[11px] text-[#766f66] mt-1">${escapeHtml(item.kind || 'insight')} · ${escapeHtml(item.scope || 'session')}</p>
+                ${concepts.length ? `<div class="mt-2 flex flex-wrap gap-1">${concepts.map((c) => `<span class="memory-chip">${escapeHtml(c)}</span>`).join('')}</div>` : ''}
+            </div>`;
+        }).join('') : '<p class="text-xs text-[#9b9287]">没有长期线索匹配。</p>';
+    }
+
+    const expandedEl = document.getElementById('memory-expanded');
+    if (expandedEl) {
+        expandedEl.innerHTML = expanded.length ? expanded.map((item) => {
+            const roots = Array.isArray(item.root_ids) ? item.root_ids.slice(0, 3) : [];
+            const entity = item.entity || item.name || 'Expanded node';
+            return `<div class="rounded-lg border border-[#e3d6df] bg-[#f5eef3] p-2">
+                <div class="flex items-start justify-between gap-2">
+                    <p class="text-xs font-semibold text-[#292520]">${escapeHtml(entity)}</p>
+                    <span class="text-[11px] text-[#8a5f87]">${formatScore(item.score)}</span>
+                </div>
+                ${item.description ? `<p class="text-[11px] text-[#766f66] mt-1 line-clamp-3">${escapeHtml(item.description)}</p>` : ''}
+                ${item.reason ? `<p class="text-[11px] text-[#766f66] mt-1">${escapeHtml(item.reason)}</p>` : ''}
+                <div class="mt-2 flex items-center gap-1 text-[11px] text-[#766f66]">
+                    <span class="px-2 py-0.5 rounded bg-[#fffefa] border border-[#e3d6df]">candidate</span>
+                    <span>-></span>
+                    <span class="px-2 py-0.5 rounded bg-[#fffefa] border border-[#e3d6df]">active</span>
+                    <span>-></span>
+                    <span class="px-2 py-0.5 rounded bg-[#fffefa] border border-[#e3d6df]">promoted</span>
+                </div>
+                ${roots.length ? `<div class="mt-2 flex flex-wrap gap-1">${roots.map((r) => `<span class="memory-chip">${escapeHtml(r)}</span>`).join('')}</div>` : ''}
+            </div>`;
+        }).join('') : '<p class="text-xs text-[#9b9287]">没有 expanded node 匹配。</p>';
+    }
+
+    const sourcesEl = document.getElementById('memory-sources');
+    if (sourcesEl) {
+        sourcesEl.innerHTML = sources.length ? sources.slice(0, 5).map((item, index) => {
+            const content = item.content || item.text || item.source || `Source ${index + 1}`;
+            return `<div class="rounded-lg border border-[#d7e2e5] bg-[#edf3f4] p-2">
+                <div class="flex items-center justify-between gap-2">
+                    <p class="text-[11px] font-medium text-[#4b6f8f]">Source ${index + 1}</p>
+                    <span class="text-[11px] text-[#766f66]">${formatScore(item.confidence)}</span>
+                </div>
+                <p class="text-xs text-[#5f584f] mt-1 line-clamp-3">${escapeHtml(content)}</p>
+            </div>`;
+        }).join('') : '<p class="text-xs text-[#9b9287]">答案生成后会显示证据来源。</p>';
+    }
+}
+
+async function fetchSessions() {
+    try {
+        const resp = await fetch('/api/v1/sessions');
+        const data = await resp.json();
+        if (resp.ok && Array.isArray(data.sessions)) {
+            return data.sessions;
+        }
+    } catch (e) {
+        console.warn('Fetch sessions failed:', e);
+    }
+    return [];
+}
+
+function renderSessionSelector(sessions, selectedId) {
+    const selector = document.getElementById('session-selector');
+    if (!selector) return;
+    selector.innerHTML = '';
+
+    const normalizedSelected = selectedId ? String(selectedId) : '';
+
+    sessions.forEach((session) => {
+        const option = document.createElement('option');
+        option.value = String(session.id);
+        option.textContent = `${session.id} | ${session.title || '新对话'}`;
+        selector.appendChild(option);
+    });
+
+    if (sessions.length === 0) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = '暂无会话';
+        selector.appendChild(option);
+    }
+
+    if (normalizedSelected) {
+        selector.value = normalizedSelected;
+    } else if (sessions.length > 0) {
+        selector.value = String(sessions[0].id);
+    }
+}
+
+async function createSession(title = '新对话') {
+    try {
+        const resp = await fetch('/api/v1/sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.session && data.session.id) {
+            return data.session;
+        }
+    } catch (e) {
+        console.warn('Create session failed:', e);
+    }
+    return null;
+}
+
+async function ensureSessionReady() {
+    let sessions = await fetchSessions();
+    let targetId = getStoredSessionId();
+
+    if (!targetId || !sessions.find((s) => String(s.id) === String(targetId))) {
+        if (sessions.length > 0) {
+            targetId = String(sessions[0].id);
+        } else {
+            const created = await createSession('新对话');
+            if (!created || !created.id) {
+                return;
+            }
+            targetId = String(created.id);
+            sessions = await fetchSessions();
+        }
+    }
+
+    currentSessionId = String(targetId);
+    setStoredSessionId(currentSessionId);
+    renderSessionSelector(sessions, currentSessionId);
+    await loadHistory(currentSessionId);
+}
+
+async function refreshSessionSelector(selectedId = currentSessionId) {
+    const sessions = await fetchSessions();
+    renderSessionSelector(sessions, selectedId);
+}
+
+async function handleSessionSwitch(sessionId) {
+    const sid = sessionId ? String(sessionId) : '';
+    if (!sid || sid === currentSessionId) {
+        return;
+    }
+    currentSessionId = sid;
+    setStoredSessionId(currentSessionId);
+    clearUiAttachments();
+    resetMemoryInspector('idle');
+    renderWelcome();
+    await loadHistory(currentSessionId);
+}
+
+async function loadHistory(sessionId) {
+    if (!sessionId) {
+        renderWelcome();
+        return;
+    }
+    try {
+        const resp = await fetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}/history`);
+        const data = await resp.json();
+        const history = Array.isArray(data.history) ? data.history : [];
+
+        const container = document.getElementById('chat-messages');
+        container.innerHTML = '';
+
+        if (history.length === 0) {
+            renderWelcome();
+            return;
+        }
+
+        history.forEach((msg) => {
+            const role = (msg.role === 'user' || msg.role === 'question') ? 'user' : 'bot';
+            addMessage(msg.content || '', role, false, msg.created_at || msg.timestamp);
+        });
+    } catch (e) {
+        console.warn('Load history failed:', e);
+        renderWelcome();
+    }
+}
+
+function setMode(mode) {
+    currentMode = mode;
+    document.querySelectorAll('.mode-card').forEach((c) => c.classList.remove('active'));
+    const target = document.getElementById(`mode-${mode}`);
+    if (target) target.classList.add('active');
+}
+
+function toggleRememberTurn() {
+    rememberTurn = !rememberTurn;
+    const icon = document.getElementById('remember-toggle-icon');
+    const text = document.getElementById('remember-toggle-text');
+    const hint = document.getElementById('remember-toggle-hint');
+    if (icon) {
+        icon.className = rememberTurn
+            ? 'fa-solid fa-toggle-on text-[#54746b]'
+            : 'fa-solid fa-toggle-off text-[#9b9287]';
+    }
+    if (text) text.textContent = rememberTurn ? '写入记忆' : '不写入记忆';
+    if (hint) hint.textContent = rememberTurn ? '本轮会进入可控记忆巩固' : '本轮只回答，不进入记忆层';
+}
+
+function handleKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
+}
+
+async function handleFileSelect(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    if (!currentSessionId) {
+        await ensureSessionReady();
+    }
+
+    if (file.size > 50 * 1024 * 1024) {
+        showToast('文件大小超过 50MB 限制', 'error');
+        return;
+    }
+
+    currentFile = file;
+
+    const fileId = 'proc-' + Date.now();
+    addProcessingItem(fileId, file.name);
+
+    uploadFileWithProgress(file, fileId, (status, data) => {
+        if (status === 'success') {
+            updateProcessingStatus(fileId, 'done', '处理完成');
+            showAttachedFile(file.name, fileId);
+        } else if (status === 'processing') {
+            updateProcessingStatus(fileId, 'processing', data.message || '处理中...', data.progress || 0);
+        } else {
+            updateProcessingStatus(fileId, 'error', data.message || '处理失败');
+        }
+    });
+}
+
+function addProcessingItem(fileId, filename) {
+    const container = document.getElementById('processing-list');
+
+    const item = document.createElement('div');
+    item.id = fileId;
+    item.dataset.processingActive = '1';
+    item.className = 'bg-[#fffefa] rounded-lg p-3 border border-[#ded8cc]';
+    item.innerHTML = `
+        <div class="flex items-center gap-3">
+            <div class="mode-icon">
+                <i class="fa-solid fa-file text-[#b85c38] text-sm"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-[#292520] truncate">${filename}</p>
+                <div class="flex items-center gap-2 mt-1">
+                    <div class="processing-ring"></div>
+                    <span class="status-text text-xs text-[#b85c38]">上传中...</span>
+                </div>
+                <div class="progress-container mt-2">
+                    <div class="progress-bar" style="width: 0%"></div>
+                </div>
+            </div>
+            <button onclick="removeProcessingItem('${fileId}')" class="dt-mini-button px-0 w-8" title="移除">
+                <i class="fa-solid fa-times"></i>
+            </button>
+        </div>
+    `;
+
+    container.appendChild(item);
+    container.classList.remove('hidden');
+    processingFilesCount += 1;
+}
+
+function markProcessingFinished(item) {
+    if (!item) return;
+    if (item.dataset.processingActive !== '0') {
+        item.dataset.processingActive = '0';
+        processingFilesCount = Math.max(0, processingFilesCount - 1);
+    }
+}
+
+function updateProcessingStatus(fileId, status, message, progress = 0) {
+    const item = document.getElementById(fileId);
+    if (!item) return;
+
+    const statusText = item.querySelector('.status-text');
+    const progressBar = item.querySelector('.progress-bar');
+    const ring = item.querySelector('.processing-ring');
+
+    if (status === 'done') {
+        statusText.textContent = message;
+        statusText.className = 'status-text text-xs status-done';
+        progressBar.style.width = '100%';
+        progressBar.style.background = '#10b981';
+        if (ring) ring.style.display = 'none';
+        markProcessingFinished(item);
+
+        setTimeout(() => {
+            item.style.opacity = '0';
+            setTimeout(() => removeProcessingItem(fileId), 300);
+        }, 3000);
+    } else if (status === 'error') {
+        statusText.textContent = message;
+        statusText.className = 'status-text text-xs status-error';
+        progressBar.style.width = '100%';
+        progressBar.style.background = '#ef4444';
+        if (ring) ring.style.display = 'none';
+        markProcessingFinished(item);
+    } else if (status === 'processing') {
+        statusText.textContent = message;
+        statusText.className = 'status-text text-xs status-processing';
+        progressBar.style.width = progress + '%';
+    }
+}
+
+function removeProcessingItem(fileId) {
+    const item = document.getElementById(fileId);
+    if (item) {
+        markProcessingFinished(item);
+        item.remove();
+        checkProcessingList();
+    }
+}
+
+function checkProcessingList() {
+    const container = document.getElementById('processing-list');
+    if (container.children.length === 0) {
+        container.classList.add('hidden');
+    }
+}
+
+async function waitForFileProcessed(sessionId, filename, timeoutMs = 5 * 60 * 1000, intervalMs = 5000) {
+    const doneStatuses = new Set(['processed', 'completed', 'complete', 'done', 'success', 'ready', 'finished']);
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        try {
+            const resp = await fetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}/files`);
+            const data = await resp.json();
+            const files = Array.isArray(data.files) ? data.files : [];
+            const target = files.find((f) => String(f.filename || '') === String(filename || ''));
+            if (target) {
+                const status = String(target.status || '').toLowerCase();
+                if (doneStatuses.has(status)) {
+                    return { ok: true, status };
+                }
+            }
+        } catch (_) {}
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+    return { ok: false, status: 'timeout' };
+}
+
+function showAttachedFile(filename, fileId) {
+    const container = document.getElementById('attached-files');
+    container.classList.remove('hidden');
+
+    const tag = document.createElement('div');
+    tag.id = 'tag-' + fileId;
+    tag.className = 'file-tag flex items-center gap-1';
+    tag.innerHTML = `
+        <i class="fa-solid fa-file text-xs"></i>
+        <span>${filename}</span>
+        <button onclick="removeAttachedFile('${fileId}')" class="dt-mini-button ml-1 px-0 w-6" title="移除附件">
+            <i class="fa-solid fa-times text-xs"></i>
+        </button>
+    `;
+    container.appendChild(tag);
+}
+
+function removeAttachedFile(fileId) {
+    const tag = document.getElementById('tag-' + fileId);
+    if (tag) tag.remove();
+
+    const container = document.getElementById('attached-files');
+    if (container.children.length === 0) {
+        container.classList.add('hidden');
+        currentFile = null;
+    }
+}
+
+let _isSending = false;
+
+function _lockInput() {
+    _isSending = true;
+    const input = document.getElementById('message-input');
+    const sendBtn = input.parentElement.querySelector('button[onclick*="sendMessage"]');
+    input.disabled = true;
+    input.style.opacity = '0.5';
+    if (sendBtn) { sendBtn.disabled = true; sendBtn.style.opacity = '0.4'; }
+}
+
+function _unlockInput() {
+    _isSending = false;
+    const input = document.getElementById('message-input');
+    const sendBtn = input.parentElement.querySelector('button[onclick*="sendMessage"]');
+    input.disabled = false;
+    input.style.opacity = '1';
+    if (sendBtn) { sendBtn.disabled = false; sendBtn.style.opacity = '1'; }
+    input.focus();
+}
+
+async function sendMessage() {
+    if (_isSending) return;
+
+    if (!currentSessionId) {
+        await ensureSessionReady();
+    }
+
+    const input = document.getElementById('message-input');
+    const message = input.value.trim();
+
+    if (processingFilesCount > 0) {
+        showToast(`还有 ${processingFilesCount} 个文件正在处理中，请稍后再试`, 'warning');
+        return;
+    }
+
+    if (!message && !currentFile) {
+        showToast('请输入消息或上传文件', 'warning');
+        return;
+    }
+
+    _lockInput();
+    resetMemoryInspector('recalling');
+
+    let displayMessage = message;
+    if (currentFile) {
+        displayMessage = `<span class="file-tag"><i class="fa-solid fa-file"></i> ${currentFile.name}</span> ${message}`;
+    }
+
+    addMessage(displayMessage, 'user', false, new Date().toISOString());
+    input.value = '';
+
+    const attached = document.getElementById('attached-files');
+    attached.innerHTML = '';
+    attached.classList.add('hidden');
+    currentFile = null;
+
+    try {
+        const response = await fetch('/api/v1/query/stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                question: message || '请分析上传的文件',
+                memory_mode: 'session',
+                ui_mode: currentMode,
+                session_id: currentSessionId,
+                remember_turn: rememberTurn
+            })
+        });
+
+        if (!response.ok) {
+            let errorMsg = '请求失败，请稍后重试。';
+            try {
+                const data = await response.json();
+                errorMsg = data.response || errorMsg;
+            } catch (e) {}
+            addMessage(errorMsg, 'bot', true, new Date().toISOString());
+            _unlockInput();
+            return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+
+        let metadata = null;
+        let responseText = '';
+        const thinkStartTime = Date.now();
+        const isDeepMode = (currentMode === 'deep');
+
+        const container = document.getElementById('chat-messages');
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'flex gap-3 animate-fadeIn';
+
+        const uid = 'dt_' + Date.now();
+        msgDiv.innerHTML = `
+            <div class="assistant-avatar">
+            </div>
+            <div class="flex-1 max-w-2xl" id="${uid}_wrapper">
+                <div class="message-bot rounded-2xl rounded-tl-sm px-4 py-3 hidden" id="${uid}_answer">
+                    <div class="text-[#292520]" id="${uid}_text"></div>
+                    <p class="text-xs text-[#9b9287] mt-1">${formatTimestamp(new Date().toISOString())}</p>
+                </div>
+            </div>
+        `;
+        container.appendChild(msgDiv);
+        container.scrollTop = container.scrollHeight;
+
+        const wrapper = document.getElementById(uid + '_wrapper');
+        let thinkBlock = null;
+        let stepsContainer = null;
+
+        // Deep mode: collapsible thinking block with real-time steps
+        // Standard/Quick mode: simple inline "思考中..." indicator
+        thinkBlock = document.createElement('div');
+        thinkBlock.className = 'deep-think-block thinking';
+        thinkBlock.id = uid + '_think';
+
+        if (isDeepMode) {
+            thinkBlock.innerHTML = `
+                <div class="deep-think-header" id="${uid}_think_hdr">
+                    <span class="dt-icon"><i class="fa-solid fa-brain"></i></span>
+                    <span id="${uid}_think_label">思考中...</span>
+                    <span class="dt-arrow open" id="${uid}_arrow"><i class="fa-solid fa-chevron-down"></i></span>
+                </div>
+                <div class="deep-think-body" id="${uid}_think_body" style="max-height:500px;">
+                    <div class="deep-think-steps" id="${uid}_steps"></div>
+                </div>
+            `;
+            stepsContainer = null;
+            wrapper.insertBefore(thinkBlock, wrapper.firstChild);
+            stepsContainer = document.getElementById(uid + '_steps');
+            document.getElementById(uid + '_think_hdr').addEventListener('click', function() {
+                const body = document.getElementById(uid + '_think_body');
+                const arrow = document.getElementById(uid + '_arrow');
+                body.classList.toggle('collapsed');
+                arrow.classList.toggle('open');
+            });
+        } else {
+            thinkBlock.innerHTML = `
+                <div class="deep-think-header">
+                    <span class="dt-icon"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+                    <span id="${uid}_think_label">思考中...</span>
+                </div>
+            `;
+            wrapper.insertBefore(thinkBlock, wrapper.firstChild);
+        }
+
+        let buffer = '';
+        let thinkingDone = false;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            let lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (let line of lines) {
+                line = line.trim();
+                if (!line || !line.startsWith('data: ')) continue;
+
+                const dataStr = line.substring(6);
+                if (dataStr === '[DONE]') continue;
+
+                try {
+                    const parsed = JSON.parse(dataStr);
+
+                    if (parsed.type === 'status' && stepsContainer) {
+                        const step = document.createElement('div');
+                        step.className = 'deep-think-step';
+                        step.textContent = parsed.message;
+                        stepsContainer.appendChild(step);
+                    } else if (parsed.type === 'meta') {
+                        metadata = { ...(metadata || {}), ...(parsed.data || {}) };
+                        renderMemoryInspector(metadata);
+                        if (stepsContainer && metadata.memory_summaries && metadata.memory_summaries.length > 0) {
+                            metadata.memory_summaries.forEach(m => {
+                                const step = document.createElement('div');
+                                step.className = 'deep-think-step';
+                                step.textContent = `记忆关联: ${m.summary} (${m.hint}, ${m.score})`;
+                                stepsContainer.appendChild(step);
+                            });
+                        }
+                        if (stepsContainer && metadata.expanded_matches && metadata.expanded_matches.length > 0) {
+                            metadata.expanded_matches.forEach(n => {
+                                const step = document.createElement('div');
+                                step.className = 'deep-think-step';
+                                step.textContent = `扩展节点匹配: ${n.entity || ''} - ${n.reason || ''}`;
+                                stepsContainer.appendChild(step);
+                            });
+                        }
+                    } else if (parsed.type === 'chunk') {
+                        if (!thinkingDone) {
+                            thinkingDone = true;
+                            const elapsed = ((Date.now() - thinkStartTime) / 1000).toFixed(1);
+                            thinkBlock.classList.remove('thinking');
+                            if (isDeepMode) {
+                                document.getElementById(uid + '_think_label').textContent = `已深度思考（用时 ${elapsed} 秒）`;
+                                const body = document.getElementById(uid + '_think_body');
+                                body.classList.add('collapsed');
+                                document.getElementById(uid + '_arrow').classList.remove('open');
+                            } else {
+                                thinkBlock.remove();
+                            }
+                        }
+                        responseText += (parsed.content || '');
+                        const answerBox = document.getElementById(uid + '_answer');
+                        answerBox.classList.remove('hidden');
+
+                        let html = responseText
+                            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                        html = html.replace(/```([\s\S]*?)```/g, '<pre class="bg-[#292520] text-[#fffefa] p-3 rounded-lg overflow-x-auto text-sm my-2"><code>$1</code></pre>');
+                        html = html.replace(/`([^`]+)`/g, '<code class="bg-[#f7f3ea] text-[#8f4329] px-1 py-0.5 rounded text-sm">$1</code>');
+                        html = html.replace(/\n/g, '<br>');
+                        document.getElementById(uid + '_text').innerHTML = html;
+                    }
+                    container.scrollTop = container.scrollHeight;
+                } catch (e) {
+                    console.error("SSE parse error:", e, dataStr);
+                }
+            }
+        }
+
+        // Ensure answer is visible
+        const answerBox = document.getElementById(uid + '_answer');
+        if (answerBox) answerBox.classList.remove('hidden');
+
+        // Finalize: clean up thinking block if stream ended before any chunk
+        if (!thinkingDone && thinkBlock) {
+            if (isDeepMode) {
+                const elapsed = ((Date.now() - thinkStartTime) / 1000).toFixed(1);
+                thinkBlock.classList.remove('thinking');
+                document.getElementById(uid + '_think_label').textContent = `已深度思考（用时 ${elapsed} 秒）`;
+                const body = document.getElementById(uid + '_think_body');
+                body.classList.add('collapsed');
+                document.getElementById(uid + '_arrow').classList.remove('open');
+            } else {
+                thinkBlock.remove();
+            }
+        }
+
+        _unlockInput();
+
+    } catch (error) {
+        _unlockInput();
+        addMessage('网络错误，请稍后重试。', 'bot', true, new Date().toISOString());
+    }
+}
+
+function formatTimestamp(ts) {
+    if (!ts) return '刚刚';
+    let d;
+    if (typeof ts === 'number') {
+        d = ts < 1e12 ? new Date(ts * 1000) : new Date(ts);
+    } else {
+        d = new Date(ts);
+    }
+    if (isNaN(d.getTime())) return '刚刚';
+    const now = new Date();
+    const diff = (now - d) / 1000;
+    if (diff < 60) return '刚刚';
+    if (diff < 3600) return Math.floor(diff / 60) + ' 分钟前';
+    if (diff < 86400) return Math.floor(diff / 3600) + ' 小时前';
+    return d.toLocaleDateString('zh-CN') + ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+}
+
+function _buildThinkingCardHtml(meta) {
+    if (!meta || meta.answer_mode !== 'session_thinking') return '';
+    const memories = meta.memory_summaries || [];
+    const expanded = meta.expanded_matches || [];
+    if (memories.length === 0 && expanded.length === 0) return '';
+
+    let stepsHtml = '';
+    memories.forEach(m => {
+        stepsHtml += `<div class="deep-think-step">记忆关联: ${m.summary || ''} (${m.hint || '语义相似'}, ${m.score ?? '-'})</div>`;
+    });
+    expanded.forEach(n => {
+        stepsHtml += `<div class="deep-think-step">扩展节点: ${n.entity || ''} - ${n.reason || ''}</div>`;
+    });
+
+    const uid = 'tc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    return `<div class="deep-think-block">
+        <div class="deep-think-header" onclick="(function(){
+            var b=document.getElementById('${uid}_body');
+            var a=document.getElementById('${uid}_arrow');
+            b.classList.toggle('collapsed');
+            a.classList.toggle('open');
+        })()">
+            <span class="dt-icon"><i class="fa-solid fa-brain"></i></span>
+            <span>已深度思考</span>
+            <span class="dt-arrow" id="${uid}_arrow"><i class="fa-solid fa-chevron-down"></i></span>
+        </div>
+        <div class="deep-think-body collapsed" id="${uid}_body" style="max-height:500px;">
+            <div class="deep-think-steps">${stepsHtml}</div>
+        </div>
+    </div>`;
+}
+
+function addMessage(content, role, isError = false, timestamp = null, meta = null) {
+    const container = document.getElementById('chat-messages');
+    const div = document.createElement('div');
+    div.className = 'flex gap-3 animate-fadeIn';
+    const timeStr = formatTimestamp(timestamp);
+    const safeContent = String(content || '');
+
+    if (role === 'user') {
+        div.innerHTML = `
+            <div class="flex-1 flex justify-end">
+                <div class="message-user rounded-2xl rounded-tr-sm px-4 py-3 max-w-xl">
+                    <p>${safeContent}</p>
+                    <p class="text-xs text-[#eadfd2] mt-1">${timeStr}</p>
+                </div>
+            </div>
+        `;
+    } else {
+        const thinkingHtml = _buildThinkingCardHtml(meta);
+        div.innerHTML = `
+            <div class="assistant-avatar">
+            </div>
+            <div class="flex-1 max-w-2xl">
+                ${thinkingHtml}
+                <div class="message-bot rounded-2xl rounded-tl-sm px-4 py-3 ${isError ? 'border-red-200 bg-red-50' : ''}">
+                    <p class="${isError ? 'text-red-600' : 'text-[#292520]'}">${safeContent.replace(/\n/g, '<br>')}</p>
+                    <p class="text-xs text-[#9b9287] mt-1">${timeStr}</p>
+                </div>
+            </div>
+        `;
+    }
+
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+async function clearChat() {
+    clearUiAttachments();
+    resetMemoryInspector('idle');
+    renderWelcome();
+
+    const session = await createSession('新对话');
+    if (session && session.id) {
+        currentSessionId = String(session.id);
+        setStoredSessionId(currentSessionId);
+        await refreshSessionSelector(currentSessionId);
+        await loadHistory(currentSessionId);
+    }
+}
+
+// Override upload behavior: keep file in "processing" until backend document status is done.
+function uploadFileWithProgress(file, fileId, onStatusChange) {
+    const formData = new FormData();
+    formData.append('files', file);
+    if (currentSessionId) {
+        formData.append('session_id', currentSessionId);
+    }
+
+    let uploadProgress = 0;
+    const uploadInterval = setInterval(() => {
+        uploadProgress += Math.random() * 20;
+        if (uploadProgress > 90) {
+            uploadProgress = 90;
+            clearInterval(uploadInterval);
+        }
+        updateProcessingStatus(fileId, 'processing', 'Uploading...', uploadProgress);
+    }, 200);
+
+    fetch('/api/v1/upload', {
+        method: 'POST',
+        body: formData
+    })
+    .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        return { ok: res.ok, data };
+    })
+    .then(({ ok, data }) => {
+        clearInterval(uploadInterval);
+
+        let success = false;
+        if (data && typeof data === 'object') {
+            success = data.success === true || data.status === 'success' || data.status === 'processing';
+        }
+        if (!success && ok && (!data || (!('success' in data) && !('status' in data)))) {
+            success = true;
+        }
+
+        if (!success) {
+            updateProcessingStatus(fileId, 'error', (data && data.message) || 'Upload failed');
+            onStatusChange('error', data || { message: 'Upload failed' });
+            return;
+        }
+
+        const backgroundProcessing = !!(data && (data.background_processing === true || data.status === 'processing'));
+        if (backgroundProcessing && currentSessionId) {
+            updateProcessingStatus(fileId, 'processing', 'Background parsing...', 95);
+            waitForFileProcessed(currentSessionId, file.name).then((result) => {
+                if (result.ok) {
+                    updateProcessingStatus(fileId, 'done', 'Processing completed', 100);
+                    onStatusChange('success', data || {});
+                } else {
+                    updateProcessingStatus(fileId, 'error', 'Processing taking too long, backend may still be running. Check back later.');
+                    onStatusChange('error', { message: 'background processing timeout (backend may still be working)' });
+                }
+            });
+            return;
+        }
+
+        updateProcessingStatus(fileId, 'done', 'Processing completed', 100);
+        onStatusChange('success', data || {});
+    })
+    .catch((err) => {
+        clearInterval(uploadInterval);
+        updateProcessingStatus(fileId, 'error', 'Network error: ' + err.message);
+        onStatusChange('error', { message: err.message });
+    });
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    const messagesContainer = document.getElementById('chat-messages');
+    defaultWelcomeHtml = messagesContainer ? messagesContainer.innerHTML : '';
+    await ensureSessionReady();
+});
+</script>
+{% endblock %}
