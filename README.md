@@ -1,86 +1,75 @@
 # WorkplaceThinker
 
-WorkplaceThinker is a DocThinker-based fork for workplace relationship intelligence.
-It helps early-career employees upload work-related context, chat through confusing
-situations, and visualize potential collaboration patterns, reporting lines, and
-hidden risks as an evidence-grounded graph.
+**Paste messy workplace context. Get an evidence-grounded relationship graph.**
 
-DocThinker remains the lower-level agentic memory framework. WorkplaceThinker adds
-a vertical product layer for:
+WorkplaceThinker is a workplace relationship and risk insight agent built on top
+of DocThinker's agentic memory foundation. It is designed for people who are new
+to a team, new to work, or stuck in a confusing collaboration: paste chats,
+meeting notes, org lines, project context, or uploaded text, and WorkplaceThinker
+turns the situation into a graph of people, collaboration signals, risks,
+hidden hypotheses, evidence, and safe next questions.
 
-- one-box analysis: users can paste messy notes, chats, and org lines without
-  preparing a structured payload;
-- people and organization-structure extraction;
-- relationship mining from chats and uploaded notes;
-- collaboration, commitment, support, challenge, and reporting edges;
-- hidden-risk hypotheses such as information asymmetry, process bypass, credit/blame
-  risk, unclear ownership, and pressure-driven commitments;
-- graph visualization so users can immediately see who connects to whom and where
-  the risk signals and hidden hypotheses sit;
-- evidence-first summaries and neutral confirmation questions.
+It does **not** claim to read minds. It separates observed facts from hypotheses,
+requires evidence for claims, and suggests neutral confirmation questions instead
+of encouraging suspicion or workplace politics.
+
+## What It Does
+
+- **One-box input**: paste all information directly. No structured payload needed.
+- **Relationship graph**: see people, reporting lines, support, collaboration,
+  challenge, commitment, risk signals, and hidden hypotheses.
+- **Evidence-first reasoning**: every risk or hypothesis points back to evidence ids.
+- **Harness architecture**: input, reasoning, graph, and control are packaged as
+  one product-facing interface.
+- **User control**: verify, reject, promote confirmed facts, or exclude sensitive
+  context from memory.
+- **Memory-ready**: designed to reuse DocThinker's session memory, long-horizon
+  memory, and knowledge graph substrate.
 
 ## Why This Exists
 
-New employees often lack the context to understand informal influence, unclear
-ownership, private communication loops, and shifting commitments. WorkplaceThinker
-does not claim to read minds. It separates observed facts from hypotheses, ties
-each warning to evidence, and suggests safer ways to clarify the situation.
+Early-career employees often lack the informal context that experienced people
+take for granted:
 
-## Core Flow
+- Who actually owns a task?
+- Is this a formal decision or a private side-channel?
+- Is someone changing commitments?
+- Could I be carrying responsibility without authority?
+- What should I confirm in writing?
+
+WorkplaceThinker turns vague anxiety into a structured, evidence-backed view:
 
 ```text
-One pasted information bundle
-        |
-        v
-Evidence segmentation with stable evidence ids
-        |
-        v
-People / relationship / risk candidate extraction
-        |
-        v
-LLM-assisted enrichment with evidence constraints
-        |
-        v
-Relationship graph + risk cards + confirmation questions
+raw workplace context
+  -> evidence ids
+  -> people + org extraction
+  -> relationship and risk candidates
+  -> LLM-assisted reasoning with evidence constraints
+  -> graph + risk cards + confirmation questions
+  -> user verification and memory control
 ```
 
-## Harness Interface
+## Demo
 
-The recommended integration surface is `WorkplaceInsightHarness`, not the lower
-level extraction engine. It packages the agent into four product layers:
-
-- `InputHarness`: accepts one messy information bundle and auto-splits evidence,
-  org lines, and question context.
-- `ReasoningHarness`: runs evidence-first rules plus optional LLM enrichment.
-- `GraphHarness`: returns graph metadata, legend, focus nodes, and graph counts.
-- `ControlHarness`: returns user actions for verify, reject, promote, exclude,
-  and memory policy control.
-
-The harness response includes `graph`, `graph_view`, `control_manifest`,
-`harness`, `risks`, `hidden_hypotheses`, `recommended_questions`, and `evidence`.
-
-## Run The Standalone API
+Start the standalone API:
 
 ```bash
 python -m uvicorn workplace_thinker.api:app --host 0.0.0.0 --port 8010
 ```
 
-Then open the local graph demo:
+Open:
 
 ```text
 http://127.0.0.1:8010
 ```
 
-The demo calls:
+The demo UI lets you paste one information bundle and returns a graph. Risk
+signals are graph nodes, hidden hypotheses are graph nodes, and the side panel
+shows evidence-backed risks plus user control actions.
 
-```text
-POST /api/v1/workplace/analyze/raw
-```
+## Quick API Example
 
-You can also open `apps/workplace_radar.html` directly. If the API is not
-running, the page displays a built-in sample graph.
-
-## API Example
+Use the product-friendly raw endpoint:
 
 ```python
 import httpx
@@ -98,33 +87,116 @@ payload = {
     """,
 }
 
-print(httpx.post("http://127.0.0.1:8010/api/v1/workplace/analyze/raw", json=payload).json())
+result = httpx.post(
+    "http://127.0.0.1:8010/api/v1/workplace/analyze/raw",
+    json=payload,
+).json()
+
+print(result["summary"])
+print(result["graph"]["nodes"])
+print(result["control_manifest"]["actions"])
 ```
 
-Structured clients can still call the lower-level endpoint:
+Structured integrations can call:
+
+```text
+POST /api/v1/workplace/analyze
+```
+
+## Harness Interface
+
+The recommended integration surface is `WorkplaceInsightHarness`.
 
 ```python
-payload = {
-    "question": "我是不是有背锅风险？",
-    "chat_messages": [
-        {"role": "user", "content": "张伟说这个需求先做，不用审批，后面再补流程。"},
-        {"role": "user", "content": "李娜提醒我，王强之前答应负责验收，但现在又改口说不是他负责。"},
-    ],
-    "org_chart": [
-        {"name": "张伟", "title": "产品负责人", "team": "Product", "manager": "王强"},
-        {"name": "王强", "title": "部门经理", "team": "Platform"},
-        {"name": "李娜", "title": "资深同事", "team": "Product", "manager": "王强"},
-    ],
-}
+from workplace_thinker import WorkplaceInsightHarness
 
-print(httpx.post("http://127.0.0.1:8010/api/v1/workplace/analyze", json=payload).json())
+harness = WorkplaceInsightHarness()
+result = await harness.analyze_information(
+    information="组织架构：张伟 - 产品负责人 - 汇报王强\n张伟说先做，不用审批，后补流程。",
+    question="有什么隐藏风险？",
+)
 ```
 
-## Design Principle
+The harness wraps four layers:
 
-Hidden issues are hypotheses, not facts. WorkplaceThinker should make users more
-careful, better prepared, and more evidence-based, not more paranoid.
+| Layer | Role |
+| --- | --- |
+| `InputHarness` | Accepts one messy bundle and auto-splits evidence, org lines, and question context. |
+| `ReasoningHarness` | Runs evidence-first rules plus optional LLM enrichment. |
+| `GraphHarness` | Returns graph legend, focus nodes, graph statistics, and default view hints. |
+| `ControlHarness` | Returns safe user actions: verify, reject, promote, exclude, and memory policy controls. |
 
-See [docs/workplace/ALGORITHM_DESIGN.md](docs/workplace/ALGORITHM_DESIGN.md).
-See also [docs/workplace/PRODUCT_ARCHITECTURE.md](docs/workplace/PRODUCT_ARCHITECTURE.md).
-The full agent architecture is in [docs/workplace/AGENT_ARCHITECTURE.md](docs/workplace/AGENT_ARCHITECTURE.md).
+The response includes:
+
+```text
+summary
+graph
+graph_view
+risks
+hidden_hypotheses
+recommended_questions
+evidence
+control_manifest
+harness
+meta
+```
+
+## Graph Semantics
+
+Nodes:
+
+- `person`
+- `risk_signal`
+- `hidden_hypothesis`
+
+Edges:
+
+- `formal_reports_to`
+- `collaborates_with`
+- `supports`
+- `blocks_or_challenges`
+- `commits_to`
+- `mentions_risk`
+- `supports_hypothesis`
+
+Visual language:
+
+- circle = person
+- rounded square = risk signal
+- diamond = hidden hypothesis
+- blue edge = formal organization line
+- sage edge = support or collaboration
+- copper dashed edge = risk signal
+- plum dotted edge = hypothesis support
+
+## Safety Principle
+
+WorkplaceThinker should make users more careful, not more paranoid.
+
+Rules:
+
+- No evidence, no claim.
+- Hypotheses are not facts.
+- Analogy and induction can suggest what to check, not what to believe.
+- Advice should favor neutral confirmation, written clarity, and boundary setting.
+- Sensitive context should be user-controlled and excludable from memory.
+
+## Docs
+
+- [Agent architecture](docs/workplace/AGENT_ARCHITECTURE.md)
+- [Product architecture](docs/workplace/PRODUCT_ARCHITECTURE.md)
+- [Algorithm design](docs/workplace/ALGORITHM_DESIGN.md)
+
+## Roadmap
+
+- Deductive, inductive, and analogical reasoning traces.
+- Memory-backed similar case retrieval.
+- User correction loop for confirmed/false hypotheses.
+- Better graph interaction: evidence hover, filter by risk type, timeline mode.
+- Optional private local storage for workplace cases.
+
+## Relationship To DocThinker
+
+DocThinker remains the lower-level agentic memory framework. WorkplaceThinker is
+a vertical product fork that uses DocThinker's memory, upload, chat, and graph
+ideas for workplace relationship intelligence.
