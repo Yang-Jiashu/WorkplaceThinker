@@ -122,6 +122,16 @@ result1 = await harness.analyze_information(
 current_graph = harness.get_current_graph()
 print(current_graph["nodes"])
 
+# 查看不确定性检查清单（低置信度项目）
+if result1.get("uncertainty_checklist"):
+    for item in result1["uncertainty_checklist"]:
+        print(f"- {item['description']} (置信度: {item['confidence']})")
+
+# 查看多重假设分析
+if result1.get("multiple_hypotheses"):
+    for hyp in result1["multiple_hypotheses"]:
+        print(f"- {hyp['title']}: {hyp['description']}")
+
 # 第二天：遇到问题（记忆会复用之前的信息）
 result2 = await harness.analyze_information(
     information="李娜私下说，张伟之前也是这样，后来新人背锅了。",
@@ -131,6 +141,49 @@ result2 = await harness.analyze_information(
 # 查看图谱演变时间线
 timeline = harness.get_graph_timeline()
 print(timeline)
+```
+
+## 交互式不确定性处理
+
+当系统对某些判断不确定时，会提供检查清单和多重假设供用户确认：
+
+```python
+# 分析结果中包含不确定性检查清单
+result = await harness.analyze_information(
+    information="...",
+    question="..."
+)
+
+# 1. 查看不确定性检查清单
+checklist = result.get("uncertainty_checklist", [])
+for item in checklist:
+    print(f"[ {item['type']} ] {item['description']}")
+    print(f"  置信度: {item['confidence']}")
+    print("  选项:")
+    for opt in item['options']:
+        print(f"    - {opt['label']}: {opt['suggestion']}")
+
+# 2. 查看多重假设分析
+hypotheses = result.get("multiple_hypotheses", [])
+for hyp in hypotheses:
+    print(f"【{hyp['title']}】")
+    print(f"  {hyp['description']}")
+    print(f"  建议: {hyp['recommendation']}")
+
+# 3. 记录用户反馈
+feedback = {
+    "analysis_id": result.get("id", ""),
+    "item_type": "risk",
+    "item_id": checklist[0]['id'],
+    "action": "confirm",  # confirm|reject|pending|accept|monitor
+    "user_note": "我也觉得这个风险确实存在，之前听说过类似的事"
+}
+feedback_id = harness.record_user_feedback(feedback)
+print(f"反馈已记录，ID: {feedback_id}")
+
+# 4. 查看反馈历史
+history = harness.get_user_feedback_history()
+print(f"已记录 {len(history)} 条反馈")
 ```
 
 ## 记忆系统 API

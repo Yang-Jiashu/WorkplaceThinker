@@ -734,6 +734,63 @@ class WorkplaceMemoryEngine:
                     "relationships": rels,
                 })
         return history
+
+    def record_user_feedback(self, feedback: Dict[str, Any]) -> str:
+        """
+        记录用户反馈：
+        - 对不确定性检查清单的选择
+        - 对多重假设的选择
+        - 用户自定义的理解
+        
+        Args:
+            feedback: {
+                "analysis_id": "上次分析的ID",
+                "item_type": "relationship|risk|hypothesis|interpretation",
+                "item_id": "项目ID",
+                "action": "confirm|reject|pending|accept|alternative|monitor",
+                "user_note": "用户备注（可选）",
+                "custom_hypothesis": "用户自定义假设（可选）"
+            }
+        
+        Returns:
+            反馈记录ID
+        """
+        feedback_id = f"feedback_{int(time.time())}"
+        feedback_record = {
+            "id": feedback_id,
+            "timestamp": time.time(),
+            **feedback
+        }
+        self._feedback_history.append(feedback_record)
+        
+        # 根据反馈更新记忆
+        item_type = feedback.get("item_type", "")
+        action = feedback.get("action", "")
+        
+        if item_type == "risk" and action == "confirm":
+            # 用户确认风险，记录为模式
+            self.record_pattern(
+                pattern_type="user_confirmed_risk",
+                name=feedback.get("item_id", ""),
+                description="用户确认的风险信号",
+                example=feedback.get("user_note", ""),
+                confidence=0.95
+            )
+        elif item_type == "interpretation" and action == "accept":
+            # 用户接受某个解释，记录为模式
+            self.record_pattern(
+                pattern_type="user_interpretation",
+                name=feedback.get("item_id", ""),
+                description="用户选择的解释角度",
+                example=feedback.get("user_note", ""),
+                confidence=0.85
+            )
+        
+        return feedback_id
+
+    def get_user_feedback_history(self) -> List[Dict[str, Any]]:
+        """获取用户反馈历史"""
+        return list(self._feedback_history)
     
     def get_stats(self) -> Dict[str, Any]:
         """获取记忆统计信息"""

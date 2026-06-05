@@ -345,3 +345,20 @@ class WorkplaceInsightHarness:
         if self.enable_memory and self.memory:
             return self.memory.get_relationship_history(person1, person2)
         return None
+    
+    def record_user_feedback(self, feedback: Dict[str, Any]) -> Optional[str]:
+        """
+        记录用户反馈：
+        - 对不确定性检查清单的选择
+        - 对多重假设的选择
+        - 用户自定义的理解
+        """
+        if self.enable_memory and self.memory:
+            return self.memory.record_user_feedback(feedback)
+        return None
+    
+    def get_user_feedback_history(self) -> Optional[List[Dict[str, Any]]]:
+        """获取用户反馈历史"""
+        if self.enable_memory and self.memory:
+            return self.memory.get_user_feedback_history()
+        return None

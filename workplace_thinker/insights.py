@@ -486,6 +486,11 @@ class WorkplaceInsightEngine:
         # 构建记忆增强的摘要（如果有记忆）
         summary = self._summary(nodes, edges, risks, hypotheses, question, similar_scenarios)
         
+        # 检测低置信度项目，生成检查清单
+        uncertainty_checklist = self._generate_uncertainty_checklist(edges, risks, hypotheses)
+        # 生成多重假设分析
+        multiple_hypotheses = self._generate_multiple_hypotheses(evidence, edges, risks, question)
+        
         result = {
             "summary": summary,
             "graph": augmented_graph,
@@ -495,12 +500,15 @@ class WorkplaceInsightEngine:
             "hidden_hypotheses": hypotheses,
             "recommended_questions": self._recommended_questions(risk_counts, risks),
             "evidence": [item.__dict__ for item in evidence],
+            "uncertainty_checklist": uncertainty_checklist,
+            "multiple_hypotheses": multiple_hypotheses,
             "meta": {
                 "method": "rules_plus_optional_llm",
                 "llm_used": False,
                 "evidence_count": len(evidence),
                 "org_people_count": len(org_people),
                 "memory_used": memory_context is not None,
+                "uncertainty_count": len(uncertainty_checklist),
             },
         }
         
@@ -643,6 +651,181 @@ class WorkplaceInsightEngine:
         if risk_counts["power_pressure"] and risk_counts["process_bypass"]:
             add("可能存在被动承诺风险", "压力话术叠加流程绕过，容易让执行者在没有资源和授权时先承担承诺。", ["power_pressure", "process_bypass"], 0.52)
         return sorted(hypotheses, key=lambda h: -h["confidence"])[:8]
+
+    def _generate_uncertainty_checklist(
+        self,
+        edges: Sequence[Dict[str, Any]],
+        risks: Sequence[Dict[str, Any]],
+        hypotheses: Sequence[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """
+        生成不确定性检查清单：
+        - 检测低置信度的关系、风险、假设
+        - 整理成清晰的列表给用户确认
+        - 每种情况包含：类型、描述、置信度、证据、建议选项
+        """
+        checklist: List[Dict[str, Any]] = []
+        confidence_threshold = 0.65
+        
+        # 检查低置信度的关系
+        for edge in edges:
+            score = float(edge.get("score", 0))
+            if score < confidence_threshold and edge.get("type") != "formal_reports_to":
+                checklist.append({
+                    "id": edge.get("id"),
+                    "type": "relationship",
+                    "description": f"{edge.get('source_name', '')} 和 {edge.get('target_name', '')} 的关系：{edge.get('label', '')}",
+                    "confidence": score,
+                    "evidence_ids": edge.get("evidence_ids", []),
+                    "options": [
+                        {
+                            "id": "confirm",
+                            "label": "确认这个关系",
+                            "suggestion": "如果确认无误，可以标记为已确认，提升置信度"
+                        },
+                        {
+                            "id": "reject",
+                            "label": "否定这个关系",
+                            "suggestion": "如果这个关系不对，可以标记为否定"
+                        },
+                        {
+                            "id": "pending",
+                            "label": "先记录，后续确认",
+                            "suggestion": "暂时标记为待确认，继续观察更多证据"
+                        },
+                    ]
+                })
+        
+        # 检查低置信度的风险
+        for risk in risks:
+            confidence = float(risk.get("confidence", 0))
+            if confidence < confidence_threshold:
+                checklist.append({
+                    "id": risk.get("id"),
+                    "type": "risk",
+                    "description": f"风险：{risk.get('title', '')}",
+                    "confidence": confidence,
+                    "evidence_ids": risk.get("evidence_ids", []),
+                    "evidence_text": risk.get("evidence_text", ""),
+                    "options": [
+                        {
+                            "id": "confirm",
+                            "label": "确认存在这个风险",
+                            "suggestion": "如果确实存在这个风险，可以标记并记录观察"
+                        },
+                        {
+                            "id": "reject",
+                            "label": "这个风险不适用",
+                            "suggestion": "如果这个风险不适用当前情况，可以标记为排除"
+                        },
+                        {
+                            "id": "monitor",
+                            "label": "持续观察",
+                            "suggestion": "先记录下来，后续看是否有更多证据支持"
+                        },
+                    ]
+                })
+        
+        # 检查低置信度的假设
+        for hyp in hypotheses:
+            confidence = float(hyp.get("confidence", 0))
+            if confidence < confidence_threshold:
+                checklist.append({
+                    "id": hyp.get("id"),
+                    "type": "hypothesis",
+                    "description": f"假设：{hyp.get('title', '')}",
+                    "confidence": confidence,
+                    "rationale": hyp.get("rationale", ""),
+                    "evidence_ids": hyp.get("evidence_ids", []),
+                    "options": [
+                        {
+                            "id": "accept",
+                            "label": "接受这个假设",
+                            "suggestion": "如果认为这个假设合理，可以标记为参考假设"
+                        },
+                        {
+                            "id": "reject",
+                            "label": "排除这个假设",
+                            "suggestion": "如果认为这个假设不成立，可以标记为排除"
+                        },
+                        {
+                            "id": "alternative",
+                            "label": "我有其他理解",
+                            "suggestion": "可以添加自己的理解或假设"
+                        },
+                    ]
+                })
+        
+        return checklist[:15]  # 最多显示15个不确定性项目
+
+    def _generate_multiple_hypotheses(
+        self,
+        evidence: Sequence[Evidence],
+        edges: Sequence[Dict[str, Any]],
+        risks: Sequence[Dict[str, Any]],
+        question: str,
+    ) -> List[Dict[str, Any]]:
+        """
+        生成多重假设分析：
+        - 对同一情况给出几种可能的解释
+        - 每种解释都有支持的证据和置信度
+        - 用户可以选择最符合情况的解释
+        """
+        hypotheses_list: List[Dict[str, Any]] = []
+        
+        # 基于风险组合生成几种可能的解释
+        risk_categories = [r.get("category") for r in risks]
+        risk_texts = [r.get("evidence_text", "") for r in risks]
+        
+        # 假设1：最直接的解释
+        if "process_bypass" in risk_categories or "ownership_ambiguity" in risk_categories:
+            hypotheses_list.append({
+                "id": "interpretation_direct",
+                "title": "解释A：可能是流程不规范",
+                "description": "可能是团队流程还在完善中，或者有临时的特殊安排",
+                "confidence": 0.6,
+                "supporting_evidence": [r.get("id") for r in risks if r.get("category") in ["process_bypass", "ownership_ambiguity"]][:3],
+                "recommendation": "建议通过书面确认明确流程和责任边界",
+                "tone": "neutral",
+            })
+        
+        # 假设2：更谨慎的解释
+        if "information_asymmetry" in risk_categories or "credit_blame" in risk_categories:
+            hypotheses_list.append({
+                "id": "interpretation_cautious",
+                "title": "解释B：可能存在信息差",
+                "description": "可能有些决策是在小范围做出的，需要更多背景信息才能完全理解",
+                "confidence": 0.5,
+                "supporting_evidence": [r.get("id") for r in risks if r.get("category") in ["information_asymmetry", "credit_blame"]][:3],
+                "recommendation": "建议通过提问填补信息空白，不要假设自己完全理解",
+                "tone": "cautious",
+            })
+        
+        # 假设3：人际关系角度
+        if any(e.get("type") in ["supports", "blocks_or_challenges"] for e in edges):
+            hypotheses_list.append({
+                "id": "interpretation_relationship",
+                "title": "解释C：可能涉及人际协作模式",
+                "description": "可能反映了团队中特定的协作方式或人际互动模式",
+                "confidence": 0.45,
+                "supporting_evidence": [e.get("id") for e in edges if e.get("type") in ["supports", "blocks_or_challenges"]][:3],
+                "recommendation": "建议观察更多互动再下结论，保持开放态度",
+                "tone": "observational",
+            })
+        
+        # 如果没有生成任何假设，提供一个通用的
+        if not hypotheses_list:
+            hypotheses_list.append({
+                "id": "interpretation_general",
+                "title": "需要更多信息才能判断",
+                "description": "当前信息还不足以形成明确判断，建议继续观察",
+                "confidence": 0.3,
+                "supporting_evidence": [],
+                "recommendation": "建议记录观察，后续收集更多信息再分析",
+                "tone": "neutral",
+            })
+        
+        return hypotheses_list
 
     def _recommended_questions(self, risk_counts: Counter, risks: Sequence[Dict[str, Any]]) -> List[str]:
         questions = [
