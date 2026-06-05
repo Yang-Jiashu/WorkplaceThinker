@@ -219,10 +219,14 @@ class WorkplaceMemoryEngine:
                 score += 0.2 * len(analysis_risks & risk_set) / max(len(analysis_risks), len(risk_set))
             
             if score > 0:
-                scored.append((-score, analysis))  # 负分用于升序排序
+                # 使用元组 (score, id) 来避免字典比较问题
+                # 负分用于升序排序（高分在前）
+                analysis_id = str(analysis.get("id", analysis.get("summary", "")))
+                scored.append((-score, analysis_id, analysis))
         
-        scored.sort()
-        return [a for (_, a) in scored[:top_k]]
+        # 安全排序：使用分数和ID作为排序键
+        scored.sort(key=lambda x: (x[0], x[1]))
+        return [a for (_, _, a) in scored[:top_k]]
     
     def get_person_profile(self, name: str) -> Optional[PersonProfile]:
         """获取人物画像"""
