@@ -168,6 +168,124 @@ class WorkplaceInsightEngine:
                 return self._merge_llm_result(deterministic, enriched)
         return deterministic
 
+    async def analyze_information(
+        self,
+        information: str,
+        *,
+        question: str = "",
+        org_chart: Sequence[Dict[str, Any]] = (),
+        use_llm: bool = True,
+    ) -> Dict[str, Any]:
+        """Analyze a single user-provided information bundle.
+
+        This is the product-friendly path: users can paste chat fragments,
+        meeting notes, org chart lines, and their question into one box.
+        """
+        parsed = self.parse_information(information, question=question)
+        merged_org = list(org_chart or []) or parsed["org_chart"]
+        result = await self.analyze(
+            chat_messages=parsed["chat_messages"],
+            uploaded_texts=parsed["uploaded_texts"],
+            org_chart=merged_org,
+            question=question or parsed["question"],
+            use_llm=use_llm,
+        )
+        result.setdefault("meta", {})["input_mode"] = "raw_information"
+        result["parsed_input"] = {
+            "question": question or parsed["question"],
+            "org_chart": merged_org,
+            "chat_message_count": len(parsed["chat_messages"]),
+            "uploaded_text_count": len(parsed["uploaded_texts"]),
+        }
+        return result
+
+    def parse_information(self, information: str, *, question: str = "") -> Dict[str, Any]:
+        raw = str(information or "").strip()
+        lines = [line.strip() for line in raw.splitlines() if line.strip()]
+        org_chart: List[Dict[str, Any]] = []
+        content_lines: List[str] = []
+        inferred_question = question.strip()
+
+        for line in lines:
+            if not inferred_question and ("?" in line or "？" in line) and len(line) <= 80:
+                inferred_question = line
+                continue
+            org_item = self._parse_org_line(line)
+            if org_item:
+                org_chart.append(org_item)
+            else:
+                content_lines.append(line)
+
+        if not content_lines and raw:
+            content_lines = [raw]
+
+        return {
+            "question": inferred_question,
+            "chat_messages": [{"role": "user", "content": "\n".join(content_lines)}] if content_lines else [],
+            "uploaded_texts": [],
+            "org_chart": self._dedupe_org_chart(org_chart),
+        }
+
+    def _parse_org_line(self, line: str) -> Optional[Dict[str, Any]]:
+        if not any(token in line for token in ("组织", "架构", "汇报", "上级", "manager", "Manager", "团队", "team", "Team", "title", "岗位", "角色", "负责人")):
+            return None
+        body = re.sub(r"^\s*(?:组织架构|组织|人员|成员|org\s*chart|org)[:：]?\s*", "", line, flags=re.I).strip()
+        parts = [p.strip() for p in re.split(r"[-—|,，;；]", body) if p.strip()]
+        name = ""
+        if parts:
+            first = parts[0]
+            direct = re.match(r"([\u4e00-\u9fff]{2,4}|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})", first)
+            if direct:
+                name = direct.group(1)
+        if not name:
+            names = extract_people(body)
+            name = names[0] if names else ""
+        if not name:
+            return None
+        manager = ""
+        manager_match = re.search(r"(?:汇报(?:给|到)?|上级[:：=]?|manager[:：=]?)\s*([\u4e00-\u9fff]{2,4}|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})", line, flags=re.I)
+        if manager_match:
+            manager = manager_match.group(1)
+        elif "汇报" in line or "上级" in line or "manager" in line.lower():
+            names = [n for n in extract_people(body) if n != name]
+            manager = names[0] if names else ""
+
+        title = ""
+        title_match = re.search(r"(?:岗位|职位|角色|title)[:：=]?\s*([^,，;；|]+)", line, flags=re.I)
+        if title_match:
+            title = title_match.group(1).strip()
+        elif any(sep in line for sep in ("-", "—", "|", "，", ",")):
+            for part in parts:
+                if name not in part and not any(k in part for k in ("汇报", "上级", "manager", "团队", "team", "组织", "架构")):
+                    title = part
+                    break
+
+        team = ""
+        for part in parts:
+            if "团队" in part:
+                candidate = part.replace("团队", "").strip(" ：:=_-—")
+                if candidate and name not in candidate:
+                    team = candidate
+                    break
+        if not team:
+            team_match = re.search(r"(?:团队|team)[:：=]\s*([^,，;；|\\-—]+)", line, flags=re.I)
+            if team_match:
+                team = team_match.group(1).strip()
+        return {"name": name, "title": title, "team": team, "manager": manager}
+
+    def _dedupe_org_chart(self, org_chart: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        merged: Dict[str, Dict[str, Any]] = {}
+        for item in org_chart:
+            name = str(item.get("name") or "").strip()
+            if not name:
+                continue
+            existing = merged.setdefault(name, {"name": name, "title": "", "team": "", "manager": ""})
+            for key in ("title", "team", "manager"):
+                value = str(item.get(key) or "").strip()
+                if value and not existing.get(key):
+                    existing[key] = value
+        return list(merged.values())
+
     def _collect_evidence(self, chat_messages: Sequence[Dict[str, Any]], uploaded_texts: Sequence[Dict[str, str]]) -> List[Evidence]:
         evidence: List[Evidence] = []
         for idx, msg in enumerate(chat_messages):
@@ -290,10 +408,12 @@ class WorkplaceInsightEngine:
         edges = sorted(edge_map.values(), key=lambda e: (-float(e["score"]), e["label"]))[:50]
         risks = sorted(risks, key=lambda r: (-float(r["severity"]), -float(r["confidence"])))[:20]
         hypotheses = self._build_hypotheses(risk_counts, edges, risks)
+        person_nodes = nodes
+        augmented_graph = self._augment_graph(person_nodes, edges, risks, hypotheses)
         return {
             "summary": self._summary(nodes, edges, risks, hypotheses, question),
-            "graph": {"nodes": nodes, "edges": edges},
-            "people": nodes,
+            "graph": augmented_graph,
+            "people": person_nodes,
             "relationships": edges,
             "risks": risks,
             "hidden_hypotheses": hypotheses,
@@ -306,6 +426,102 @@ class WorkplaceInsightEngine:
                 "org_people_count": len(org_people),
             },
         }
+
+    def _augment_graph(
+        self,
+        people_nodes: Sequence[Dict[str, Any]],
+        relation_edges: Sequence[Dict[str, Any]],
+        risks: Sequence[Dict[str, Any]],
+        hypotheses: Sequence[Dict[str, Any]],
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        nodes = [dict(node) for node in people_nodes]
+        edges = [dict(edge) for edge in relation_edges]
+        person_by_name = {str(node.get("label")): str(node.get("id")) for node in people_nodes}
+
+        risk_nodes: List[Dict[str, Any]] = []
+        for risk in risks:
+            risk_id = str(risk.get("id") or stable_id("risk", str(risk)))
+            risk_nodes.append(
+                {
+                    "id": risk_id,
+                    "label": risk.get("title") or risk.get("category") or "风险信号",
+                    "type": "risk_signal",
+                    "category": risk.get("category"),
+                    "severity": risk.get("severity", 0),
+                    "confidence": risk.get("confidence", 0),
+                    "evidence_ids": risk.get("evidence_ids", []),
+                }
+            )
+            linked = False
+            for person in risk.get("people", []) or []:
+                person_id = person_by_name.get(str(person))
+                if not person_id:
+                    continue
+                linked = True
+                edges.append(
+                    {
+                        "id": stable_id("edge", f"{person_id}:{risk_id}:mentions_risk"),
+                        "source": person_id,
+                        "target": risk_id,
+                        "type": "mentions_risk",
+                        "label": "涉及风险",
+                        "score": risk.get("confidence", 0.5),
+                        "risk": True,
+                        "evidence_ids": risk.get("evidence_ids", []),
+                    }
+                )
+            if not linked and people_nodes:
+                edges.append(
+                    {
+                        "id": stable_id("edge", f"{people_nodes[0]['id']}:{risk_id}:case_risk"),
+                        "source": str(people_nodes[0]["id"]),
+                        "target": risk_id,
+                        "type": "case_risk",
+                        "label": "场景风险",
+                        "score": risk.get("confidence", 0.4),
+                        "risk": True,
+                        "evidence_ids": risk.get("evidence_ids", []),
+                    }
+                )
+
+        risk_by_evidence: Dict[str, List[str]] = defaultdict(list)
+        for risk in risks:
+            for ev in risk.get("evidence_ids", []) or []:
+                risk_by_evidence[str(ev)].append(str(risk.get("id")))
+
+        hyp_nodes: List[Dict[str, Any]] = []
+        for hyp in hypotheses:
+            hyp_id = str(hyp.get("id") or stable_id("hyp", str(hyp)))
+            hyp_nodes.append(
+                {
+                    "id": hyp_id,
+                    "label": hyp.get("title") or "隐藏假设",
+                    "type": "hidden_hypothesis",
+                    "confidence": hyp.get("confidence", 0),
+                    "status": hyp.get("status", "hypothesis_not_fact"),
+                    "evidence_ids": hyp.get("evidence_ids", []),
+                }
+            )
+            linked_risks: List[str] = []
+            for ev in hyp.get("evidence_ids", []) or []:
+                linked_risks.extend(risk_by_evidence.get(str(ev), []))
+            for risk_id in list(dict.fromkeys(linked_risks))[:4]:
+                if not risk_id:
+                    continue
+                edges.append(
+                    {
+                        "id": stable_id("edge", f"{risk_id}:{hyp_id}:supports_hypothesis"),
+                        "source": risk_id,
+                        "target": hyp_id,
+                        "type": "supports_hypothesis",
+                        "label": "支持假设",
+                        "score": hyp.get("confidence", 0.5),
+                        "hypothesis": True,
+                        "evidence_ids": hyp.get("evidence_ids", []),
+                    }
+                )
+
+        return {"nodes": nodes + risk_nodes + hyp_nodes, "edges": edges}
 
     def _build_hypotheses(self, risk_counts: Counter, edges: Sequence[Dict[str, Any]], risks: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
         hypotheses: List[Dict[str, Any]] = []
@@ -421,4 +637,10 @@ class WorkplaceInsightEngine:
         if isinstance(llm.get("recommended_questions"), list):
             merged["recommended_questions"] = list(dict.fromkeys(llm["recommended_questions"] + merged.get("recommended_questions", [])))[:10]
         merged.setdefault("meta", {})["llm_used"] = True
+        merged["graph"] = self._augment_graph(
+            merged.get("people", []),
+            merged.get("relationships", []),
+            merged.get("risks", []),
+            merged.get("hidden_hypotheses", []),
+        )
         return merged

@@ -12,6 +12,14 @@ WorkplaceThinker turns messy workplace context into an evidence-grounded graph:
 
 The target user is an early-career employee who needs clarity, not paranoia.
 
+## Input Modes
+
+- Raw information bundle: one pasted block containing notes, chats, org lines,
+  meeting snippets, and the user's question.
+- Structured chat messages: observations, questions, meeting notes, private doubts.
+- Uploaded text: email snippets, meeting minutes, project plans, policy docs.
+- Organization chart: people, roles, teams, managers, reporting lines.
+
 ## Why LLM + Memory + Graph
 
 LLMs are good at interpreting soft workplace language, but they can over-infer.
@@ -43,6 +51,11 @@ a constrained pipeline:
    - recommended confirmation questions.
 5. The validator rejects or downgrades any item without evidence ids.
 
+The product-friendly endpoint is `/api/v1/workplace/analyze/raw`. It accepts a
+single `information` field and auto-splits the bundle into evidence, org chart
+candidates, and chat/material context. Structured clients can still call
+`/api/v1/workplace/analyze`.
+
 ## Graph Model
 
 Nodes:
@@ -72,6 +85,10 @@ Visual language:
 - Copper dashed line: risk signal.
 - Plum dotted line: hypothesis.
 - Thicker line: stronger confidence or repeated evidence.
+
+Risk signals and hidden hypotheses are first-class graph nodes, not just side
+panel text. This lets users see which people and observed relationships connect
+to each possible problem.
 
 ## Output Contract
 
@@ -109,4 +126,3 @@ User controls:
 - delete specific workplace memories;
 - mark a hypothesis as wrong;
 - promote a confirmed relationship into durable memory.
-

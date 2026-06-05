@@ -73,6 +73,7 @@
     .node text { font-size: 13px; fill: #fffefa; font-weight: 700; text-anchor: middle; dominant-baseline: middle; }
     .edge { stroke: #a89d90; stroke-width: 2; }
     .edge.risk { stroke: var(--copper); stroke-width: 4; stroke-dasharray: 6 6; }
+    .edge.hypothesis { stroke: var(--plum); stroke-width: 3; stroke-dasharray: 2 7; }
     .edge.formal { stroke: var(--lake); stroke-width: 2.5; }
     .edge.support { stroke: var(--sage); stroke-width: 3; }
     .edge-label { font-size: 11px; fill: var(--muted); paint-order: stroke; stroke: var(--paper); stroke-width: 6; }
@@ -108,22 +109,32 @@
       <div class="controls">
         <label>关注问题</label>
         <textarea id="question">我是不是有背锅风险？哪些关系和隐藏问题需要确认？</textarea>
-        <label>聊天 / 上传材料摘录</label>
-        <textarea id="notes">张伟说这个需求先做，不用审批，后面再补流程。
+        <label>直接粘贴所有信息</label>
+        <textarea id="information" style="min-height: 280px;">问题：我是不是有背锅风险？哪些关系和隐藏问题需要确认？
+
+组织架构：张伟 - 产品负责人 - Product 团队 - 汇报王强
+组织架构：王强 - 部门经理 - Platform 团队
+组织架构：李娜 - 资深同事 - Product 团队 - 汇报王强
+
+聊天/观察：
+张伟说这个需求先做，不用审批，后面再补流程。
 李娜提醒我，王强之前答应负责验收，但现在又改口说不是他负责。
 张伟和王强私下沟通过，没有同步到项目群。
 王强要求周五必须上线，不然会影响绩效。</textarea>
-        <label>组织架构 JSON</label>
-        <textarea id="org">[
+        <details style="margin-top: 16px;">
+          <summary class="small" style="cursor:pointer;">高级：结构化组织架构 JSON，可不填</summary>
+          <label>组织架构 JSON</label>
+          <textarea id="org" style="min-height: 120px;">[
   {"name":"张伟","title":"产品负责人","team":"Product","manager":"王强"},
   {"name":"王强","title":"部门经理","team":"Platform"},
   {"name":"李娜","title":"资深同事","team":"Product","manager":"王强"}
 ]</textarea>
+        </details>
         <div style="display:flex; gap:10px; margin-top:18px;">
           <button class="primary" onclick="analyze()">生成关系图</button>
           <button onclick="loadSample()">示例</button>
         </div>
-        <p class="small">后端接口：POST /api/v1/workplace/analyze。打不开后端时，页面会展示内置示例图。</p>
+        <p class="small">默认只需要粘贴信息。后端接口：POST /api/v1/workplace/analyze/raw。打不开后端时，页面会展示内置示例图。</p>
       </div>
     </aside>
     <main>
@@ -132,7 +143,7 @@
           <div class="kicker">relationship graph</div>
           <strong id="graph-title">证据化关系与风险图</strong>
         </div>
-        <div class="small">实线：关系 / 虚线：风险信号 / 蓝线：正式汇报</div>
+        <div class="small">圆点：人物 / 方块：风险 / 菱形：隐藏假设</div>
       </div>
       <div class="graph-wrap"><svg id="graph"></svg></div>
     </main>
@@ -157,16 +168,21 @@
       summary: "识别到 3 个相关人物、5 条关系边。主要风险：流程绕过、信息不对称、责任边界不清。所有隐藏问题均以假设呈现，需要回到证据和确认问题验证。",
       graph: {
         nodes: [
-          {id:"person_1", label:"张伟", title:"产品负责人", team:"Product"},
-          {id:"person_2", label:"王强", title:"部门经理", team:"Platform"},
-          {id:"person_3", label:"李娜", title:"资深同事", team:"Product"}
+          {id:"person_1", label:"张伟", type:"person", title:"产品负责人", team:"Product"},
+          {id:"person_2", label:"王强", type:"person", title:"部门经理", team:"Platform"},
+          {id:"person_3", label:"李娜", type:"person", title:"资深同事", team:"Product"},
+          {id:"risk_1", label:"流程绕过", type:"risk_signal", confidence:.72},
+          {id:"risk_2", label:"信息不对称", type:"risk_signal", confidence:.6},
+          {id:"hyp_1", label:"非正式决策链", type:"hidden_hypothesis", confidence:.66}
         ],
         edges: [
           {source:"person_1", target:"person_2", type:"formal_reports_to", label:"组织架构汇报", score:.5},
-          {source:"person_1", target:"person_2", type:"process_bypass", label:"流程绕过", score:.85, risk:true},
-          {source:"person_2", target:"person_1", type:"power_pressure", label:"权力压力", score:.68, risk:true},
           {source:"person_3", target:"person_1", type:"supports", label:"提醒 / 支持", score:.6},
-          {source:"person_2", target:"person_1", type:"commitment", label:"验收改口", score:.7, risk:true}
+          {source:"person_1", target:"risk_1", type:"mentions_risk", label:"涉及风险", score:.72, risk:true},
+          {source:"person_1", target:"risk_2", type:"mentions_risk", label:"涉及风险", score:.6, risk:true},
+          {source:"person_2", target:"risk_2", type:"mentions_risk", label:"涉及风险", score:.6, risk:true},
+          {source:"risk_1", target:"hyp_1", type:"supports_hypothesis", label:"支持假设", score:.66, hypothesis:true},
+          {source:"risk_2", target:"hyp_1", type:"supports_hypothesis", label:"支持假设", score:.66, hypothesis:true}
         ]
       },
       risks: [
@@ -190,17 +206,16 @@
     }
 
     async function analyze() {
-      const notes = document.getElementById('notes').value;
+      const information = document.getElementById('information').value;
       const question = document.getElementById('question').value;
       const payload = {
         question,
-        chat_messages: [{role:'user', content: notes}],
-        uploaded_texts: [],
+        information,
         org_chart: parseOrg(),
         use_llm: false
       };
       try {
-        const res = await fetch('/api/v1/workplace/analyze', {
+        const res = await fetch('/api/v1/workplace/analyze/raw', {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
           body: JSON.stringify(payload)
@@ -219,7 +234,7 @@
       const nodes = data.graph?.nodes || [];
       const edges = data.graph?.edges || [];
       const risks = data.risks || [];
-      document.getElementById('m-people').textContent = nodes.length;
+      document.getElementById('m-people').textContent = nodes.filter(n => (n.type || 'person') === 'person').length;
       document.getElementById('m-edges').textContent = edges.length;
       document.getElementById('m-risks').textContent = risks.length;
       renderList('hypotheses', data.hidden_hypotheses || [], true);
@@ -257,17 +272,28 @@
         text(svg, (s.x+t.x)/2, (s.y+t.y)/2 - 8, e.label || e.type || '');
       });
       nodes.forEach((n, i) => {
-        const p = pos[n.id]; const color = ['#b85c38','#4b6f8f','#54746b','#8a5f87','#b7892d'][i % 5];
+        const p = pos[n.id]; const color = nodeColor(n, i);
         const g = el('g', {class:'node'});
-        g.appendChild(el('circle', {cx:p.x, cy:p.y, r:42, fill:color}));
+        if (n.type === 'risk_signal') {
+          g.appendChild(el('rect', {x:p.x - 44, y:p.y - 28, width:88, height:56, rx:12, fill:color, stroke:'#fffefa', 'stroke-width':4}));
+        } else if (n.type === 'hidden_hypothesis') {
+          g.appendChild(el('polygon', {points:`${p.x},${p.y-42} ${p.x+52},${p.y} ${p.x},${p.y+42} ${p.x-52},${p.y}`, fill:color, stroke:'#fffefa', 'stroke-width':4}));
+        } else {
+          g.appendChild(el('circle', {cx:p.x, cy:p.y, r:42, fill:color}));
+        }
         g.appendChild(el('text', {x:p.x, y:p.y}, n.label || n.id));
         svg.appendChild(g);
         text(svg, p.x, p.y + 62, [n.title, n.team].filter(Boolean).join(' · '));
       });
     }
     function line(svg, x1,y1,x2,y2,e) {
-      const klass = e.risk || ['process_bypass','power_pressure','ownership_ambiguity','credit_blame'].includes(e.type) ? 'edge risk' : e.type === 'formal_reports_to' ? 'edge formal' : e.type === 'supports' ? 'edge support' : 'edge';
+      const klass = e.hypothesis ? 'edge hypothesis' : e.risk || ['process_bypass','power_pressure','ownership_ambiguity','credit_blame','mentions_risk','case_risk'].includes(e.type) ? 'edge risk' : e.type === 'formal_reports_to' ? 'edge formal' : e.type === 'supports' ? 'edge support' : 'edge';
       svg.appendChild(el('line', {class:klass, x1,y1,x2,y2}));
+    }
+    function nodeColor(n, i) {
+      if (n.type === 'risk_signal') return '#b85c38';
+      if (n.type === 'hidden_hypothesis') return '#8a5f87';
+      return ['#b85c38','#4b6f8f','#54746b','#8a5f87','#b7892d'][i % 5];
     }
     function text(svg, x, y, content) { if (content) svg.appendChild(el('text', {class:'edge-label', x, y, 'text-anchor':'middle'}, content)); }
     function el(name, attrs={}, content='') {

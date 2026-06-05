@@ -9,6 +9,7 @@ flowchart LR
     User["Early-career user"]
 
     subgraph Inputs["Input Carriers"]
+        Raw["One-box raw info\nnotes + chats + org lines"]
         Chat["Chat observations"]
         Uploads["Uploaded docs\nemails, notes, plans"]
         Org["Org chart\nroles, teams, managers"]
@@ -16,6 +17,7 @@ flowchart LR
     end
 
     subgraph DocThinker["DocThinker Substrate"]
+        RawAdapter["Raw input adapter\nauto-split user info"]
         Ingest["Upload / chat ingest"]
         Evidence["Evidence store\nstable evidence ids"]
         SessionMemory["Session memory\ncurrent case context"]
@@ -51,11 +53,15 @@ flowchart LR
         Controls["Memory controls\nremember, exclude, delete,\npromote confirmed facts"]
     end
 
+    User --> Raw
     User --> Chat
     User --> Uploads
     User --> Org
     User --> Feedback
 
+    Raw --> RawAdapter
+    RawAdapter --> Ingest
+    RawAdapter --> People
     Chat --> Ingest
     Uploads --> Ingest
     Org --> People
@@ -164,4 +170,3 @@ observed fact -> evidence-backed graph item
 possible hidden issue -> hypothesis_not_fact
 advice -> neutral confirmation question
 ```
-

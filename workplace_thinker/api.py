@@ -25,6 +25,13 @@ class WorkplaceAnalyzeRequest(BaseModel):
     use_llm: bool = False
 
 
+class WorkplaceRawAnalyzeRequest(BaseModel):
+    information: str
+    question: str = ""
+    org_chart: List[Dict[str, Any]] = Field(default_factory=list)
+    use_llm: bool = False
+
+
 app = FastAPI(
     title="WorkplaceThinker",
     description="Workplace relationship graph and hidden-risk insight API built on DocThinker.",
@@ -55,5 +62,16 @@ async def analyze_workplace(request: WorkplaceAnalyzeRequest) -> Dict[str, Any]:
         uploaded_texts=request.uploaded_texts,
         org_chart=request.org_chart,
         question=request.question,
+        use_llm=request.use_llm,
+    )
+
+
+@app.post("/api/v1/workplace/analyze/raw")
+async def analyze_workplace_raw(request: WorkplaceRawAnalyzeRequest) -> Dict[str, Any]:
+    engine = WorkplaceInsightEngine()
+    return await engine.analyze_information(
+        request.information,
+        question=request.question,
+        org_chart=request.org_chart,
         use_llm=request.use_llm,
     )

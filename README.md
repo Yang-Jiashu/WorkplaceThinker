@@ -8,13 +8,15 @@ hidden risks as an evidence-grounded graph.
 DocThinker remains the lower-level agentic memory framework. WorkplaceThinker adds
 a vertical product layer for:
 
+- one-box analysis: users can paste messy notes, chats, and org lines without
+  preparing a structured payload;
 - people and organization-structure extraction;
 - relationship mining from chats and uploaded notes;
 - collaboration, commitment, support, challenge, and reporting edges;
 - hidden-risk hypotheses such as information asymmetry, process bypass, credit/blame
   risk, unclear ownership, and pressure-driven commitments;
 - graph visualization so users can immediately see who connects to whom and where
-  the risk signals sit;
+  the risk signals and hidden hypotheses sit;
 - evidence-first summaries and neutral confirmation questions.
 
 ## Why This Exists
@@ -27,7 +29,7 @@ each warning to evidence, and suggests safer ways to clarify the situation.
 ## Core Flow
 
 ```text
-Uploads + Chat + Org Chart
+One pasted information bundle
         |
         v
 Evidence segmentation with stable evidence ids
@@ -57,7 +59,7 @@ http://127.0.0.1:8010
 The demo calls:
 
 ```text
-POST /api/v1/workplace/analyze
+POST /api/v1/workplace/analyze/raw
 ```
 
 You can also open `apps/workplace_radar.html` directly. If the API is not
@@ -68,6 +70,25 @@ running, the page displays a built-in sample graph.
 ```python
 import httpx
 
+payload = {
+    "question": "我是不是有背锅风险？",
+    "information": """
+    组织架构：张伟 - 产品负责人 - Product 团队 - 汇报王强
+    组织架构：王强 - 部门经理 - Platform 团队
+    组织架构：李娜 - 资深同事 - Product 团队 - 汇报王强
+
+    张伟说这个需求先做，不用审批，后面再补流程。
+    李娜提醒我，王强之前答应负责验收，但现在又改口说不是他负责。
+    张伟和王强私下沟通过，没有同步到项目群。
+    """,
+}
+
+print(httpx.post("http://127.0.0.1:8010/api/v1/workplace/analyze/raw", json=payload).json())
+```
+
+Structured clients can still call the lower-level endpoint:
+
+```python
 payload = {
     "question": "我是不是有背锅风险？",
     "chat_messages": [
