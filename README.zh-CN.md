@@ -30,3 +30,5 @@ http://127.0.0.1:8010
 WorkplaceThinker 不是教用户算计别人，也不是把猜测包装成事实。它的目标是帮助新人更清楚地理解协作结构、更稳妥地确认责任、更有证据意识地处理复杂职场信息。
 
 底层能力来自 DocThinker 的 agentic memory、上传、聊天和图谱框架；本项目新增职场关系与风险洞察算法层。
+
+完整 agent 架构图见：[docs/workplace/AGENT_ARCHITECTURE.md](docs/workplace/AGENT_ARCHITECTURE.md)。

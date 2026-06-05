@@ -91,3 +91,4 @@ careful, better prepared, and more evidence-based, not more paranoid.
 
 See [docs/workplace/ALGORITHM_DESIGN.md](docs/workplace/ALGORITHM_DESIGN.md).
 See also [docs/workplace/PRODUCT_ARCHITECTURE.md](docs/workplace/PRODUCT_ARCHITECTURE.md).
+The full agent architecture is in [docs/workplace/AGENT_ARCHITECTURE.md](docs/workplace/AGENT_ARCHITECTURE.md).
