@@ -5,16 +5,29 @@ The core design is evidence-first:
 - optional LLM reasoning can enrich labels, hidden hypotheses, and advice;
 - every risk/hypothesis must point back to evidence ids;
 - hypotheses are explicitly separated from observed facts.
+
+Enhanced with Agentic Memory System:
+- Recalls similar historical scenarios for context
+- Builds and updates person profiles over time
+- Recognizes recurring risk patterns
+- Learns from user feedback to improve accuracy
 """
 
 from __future__ import annotations
 
 import json
 import re
+import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from hashlib import sha1
 from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Sequence
+
+try:
+    from .memory_engine import WorkplaceMemoryEngine
+    HAS_MEMORY_ENGINE = True
+except ImportError:
+    HAS_MEMORY_ENGINE = False
 
 
 LLMFunc = Callable[[str], Awaitable[str]]
@@ -144,10 +157,28 @@ def json_object_from_text(text: str) -> Optional[Dict[str, Any]]:
 
 
 class WorkplaceInsightEngine:
-    """Generate relationship/risk graph from chat, uploads, and org structure."""
+    """Generate relationship/risk graph from chat, uploads, and org structure.
+    
+    Enhanced with memory capabilities:
+    - Recalls similar historical scenarios
+    - Builds person profiles over time
+    - Recognizes recurring patterns
+    """
 
-    def __init__(self, llm_func: Optional[LLMFunc] = None):
+    def __init__(
+        self, 
+        llm_func: Optional[LLMFunc] = None,
+        memory_engine: Optional[WorkplaceMemoryEngine] = None,
+        session_id: Optional[str] = None,
+        enable_memory: bool = True,
+    ):
         self.llm_func = llm_func
+        self.enable_memory = enable_memory and HAS_MEMORY_ENGINE
+        
+        if self.enable_memory:
+            self.memory = memory_engine or WorkplaceMemoryEngine(session_id=session_id)
+        else:
+            self.memory = None
 
     async def analyze(
         self,
@@ -157,16 +188,56 @@ class WorkplaceInsightEngine:
         org_chart: Sequence[Dict[str, Any]] = (),
         question: str = "",
         use_llm: bool = True,
+        use_memory: bool = True,
+        save_to_memory: bool = True,
     ) -> Dict[str, Any]:
         org_people = [OrgPerson(**{k: v for k, v in item.items() if k in {"name", "title", "team", "manager", "metadata"}}) for item in org_chart if item.get("name")]
         org_names = [p.name for p in org_people]
         evidence = self._collect_evidence(chat_messages, uploaded_texts)
-        deterministic = self._deterministic_graph(evidence, org_people, org_names, question=question)
+        
+        # 获取记忆上下文
+        memory_context = None
+        similar_scenarios = []
+        if self.enable_memory and use_memory and self.memory:
+            memory_context = self.memory.get_memory_context(question)
+            similar_scenarios = await self.memory.recall_similar_scenarios(
+                query=question,
+                people=org_names,
+                risk_types=list(RISK_TAXONOMY.keys()),
+            )
+        
+        # 执行确定性分析
+        deterministic = self._deterministic_graph(
+            evidence, 
+            org_people, 
+            org_names, 
+            question=question,
+            memory_context=memory_context,
+            similar_scenarios=similar_scenarios,
+        )
+        
+        # LLM 增强（包含记忆上下文）
         if use_llm and self.llm_func and evidence:
-            enriched = await self._llm_enrich(deterministic, evidence, org_people, question)
+            enriched = await self._llm_enrich(
+            deterministic, 
+            evidence, 
+            org_people, 
+            question,
+            memory_context=memory_context,
+            similar_scenarios=similar_scenarios,
+        )
             if enriched:
-                return self._merge_llm_result(deterministic, enriched)
-        return deterministic
+                result = self._merge_llm_result(deterministic, enriched)
+            else:
+                result = deterministic
+        else:
+            result = deterministic
+        
+        # 保存到记忆
+        if self.enable_memory and save_to_memory and self.memory:
+            await self.memory.record_analysis(result)
+        
+        return result
 
     async def analyze_information(
         self,
@@ -307,6 +378,8 @@ class WorkplaceInsightEngine:
         org_names: Sequence[str],
         *,
         question: str,
+        memory_context: Optional[Dict[str, Any]] = None,
+        similar_scenarios: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         people_mentions: Counter = Counter()
         people_evidence: Dict[str, List[str]] = defaultdict(list)
@@ -410,8 +483,11 @@ class WorkplaceInsightEngine:
         hypotheses = self._build_hypotheses(risk_counts, edges, risks)
         person_nodes = nodes
         augmented_graph = self._augment_graph(person_nodes, edges, risks, hypotheses)
-        return {
-            "summary": self._summary(nodes, edges, risks, hypotheses, question),
+        # 构建记忆增强的摘要（如果有记忆）
+        summary = self._summary(nodes, edges, risks, hypotheses, question, similar_scenarios)
+        
+        result = {
+            "summary": summary,
             "graph": augmented_graph,
             "people": person_nodes,
             "relationships": edges,
@@ -424,8 +500,24 @@ class WorkplaceInsightEngine:
                 "llm_used": False,
                 "evidence_count": len(evidence),
                 "org_people_count": len(org_people),
+                "memory_used": memory_context is not None,
             },
         }
+        
+        # 添加记忆相关信息
+        if memory_context:
+            result["memory_context"] = memory_context
+        if similar_scenarios:
+            result["similar_scenarios"] = [
+                {
+                    "summary": s.get("summary", ""),
+                    "timestamp": s.get("timestamp"),
+                    "id": s.get("id"),
+                }
+                for s in similar_scenarios[:3]
+            ]
+        
+        return result
 
     def _augment_graph(
         self,
@@ -566,16 +658,44 @@ class WorkplaceInsightEngine:
             questions.insert(0, "目前材料风险信号不强，还需要补充哪些具体聊天、会议纪要或组织信息？")
         return list(dict.fromkeys(questions))[:8]
 
-    def _summary(self, nodes: Sequence[Dict[str, Any]], edges: Sequence[Dict[str, Any]], risks: Sequence[Dict[str, Any]], hypotheses: Sequence[Dict[str, Any]], question: str) -> str:
+    def _summary(self, nodes: Sequence[Dict[str, Any]], edges: Sequence[Dict[str, Any]], risks: Sequence[Dict[str, Any]], hypotheses: Sequence[Dict[str, Any]], question: str, similar_scenarios: Optional[List[Dict[str, Any]]] = None) -> str:
         people = "、".join(n["label"] for n in nodes[:5]) or "暂无明确人物"
         risk = "、".join(r["title"] for r in risks[:3]) or "暂无明显风险"
         hyp = f"；重点假设：{hypotheses[0]['title']}" if hypotheses else ""
         prefix = f"围绕“{question}”，" if question else ""
-        return f"{prefix}识别到 {len(nodes)} 个相关人物、{len(edges)} 条关系边。核心人物：{people}。主要风险：{risk}{hyp}。所有隐藏问题均以假设呈现，需要回到证据和确认问题验证。"
+        
+        memory_note = ""
+        if similar_scenarios:
+            memory_note = f"（注：发现 {len(similar_scenarios)} 个相似历史场景可供参考）"
+        
+        return f"{prefix}识别到 {len(nodes)} 个相关人物、{len(edges)} 条关系边。核心人物：{people}。主要风险：{risk}{hyp}。所有隐藏问题均以假设呈现，需要回到证据和确认问题验证。{memory_note}"
 
-    def _build_llm_prompt(self, base: Dict[str, Any], evidence: Sequence[Evidence], org_people: Sequence[OrgPerson], question: str) -> str:
+    def _build_llm_prompt(self, base: Dict[str, Any], evidence: Sequence[Evidence], org_people: Sequence[OrgPerson], question: str, memory_context: Optional[Dict[str, Any]] = None, similar_scenarios: Optional[List[Dict[str, Any]]] = None) -> str:
         evidence_lines = "\n".join(f"- {e.id}: {e.text}" for e in evidence[:80])
         org_lines = "\n".join(f"- {p.name} | {p.title} | {p.team} | manager={p.manager}" for p in org_people)
+        
+        memory_section = ""
+        if memory_context:
+            profiles = memory_context.get("person_profiles", {})
+            patterns = memory_context.get("relevant_patterns", [])
+            if profiles or patterns:
+                memory_lines = []
+                if profiles:
+                    memory_lines.append("已知人物画像：")
+                    for name, p in profiles.items():
+                        memory_lines.append(f"- {name}: {p.get('title', '')} | {p.get('team', '')} | 特征: {', '.join(p.get('traits', [])[:3])}")
+                if patterns:
+                    memory_lines.append("\n已知模式：")
+                    for p in patterns[:3]:
+                        memory_lines.append(f"- {p['name']}: {p['description']} (置信度: {p['confidence']:.2f})")
+                memory_section = "\n\n历史记忆：\n" + "\n".join(memory_lines)
+        
+        scenarios_section = ""
+        if similar_scenarios:
+            scenarios_section = "\n\n相似历史场景：\n"
+            for i, s in enumerate(similar_scenarios[:2]):
+                scenarios_section += f"{i+1}. {s.get('summary', '')[:200]}...\n"
+        
         return f"""
 你是一个职场关系与风险分析助手，服务对象是刚入职场的人。
 任务：基于聊天、上传材料和组织架构，补充人际关系、合作关系、潜在风险和隐藏假设。
@@ -585,6 +705,7 @@ class WorkplaceInsightEngine:
 2. 每条 risk / hypothesis 必须引用 evidence_ids。
 3. 输出建议要偏向确认、留痕、澄清边界，而不是鼓励算计或攻击别人。
 4. 只输出 JSON，不要 markdown。
+5. 如果有历史记忆，可将其作为参考但不要直接当成事实。
 
 用户关注：{question or "梳理职场关系和潜在风险"}
 
@@ -592,7 +713,7 @@ class WorkplaceInsightEngine:
 {org_lines or "未提供"}
 
 证据：
-{evidence_lines}
+{evidence_lines}{memory_section}{scenarios_section}
 
 当前规则抽取结果摘要：
 {json.dumps({"summary": base.get("summary"), "risks": base.get("risks", [])[:8], "relationships": base.get("relationships", [])[:10]}, ensure_ascii=False)}
@@ -607,8 +728,8 @@ class WorkplaceInsightEngine:
 }}
 """.strip()
 
-    async def _llm_enrich(self, base: Dict[str, Any], evidence: Sequence[Evidence], org_people: Sequence[OrgPerson], question: str) -> Optional[Dict[str, Any]]:
-        prompt = self._build_llm_prompt(base, evidence, org_people, question)
+    async def _llm_enrich(self, base: Dict[str, Any], evidence: Sequence[Evidence], org_people: Sequence[OrgPerson], question: str, memory_context: Optional[Dict[str, Any]] = None, similar_scenarios: Optional[List[Dict[str, Any]]] = None) -> Optional[Dict[str, Any]]:
+        prompt = self._build_llm_prompt(base, evidence, org_people, question, memory_context, similar_scenarios)
         try:
             raw = await self.llm_func(prompt)
         except Exception:

@@ -2,6 +2,12 @@
 
 The harness wraps the lower-level insight engine into a user-friendly product
 contract: one input bundle in, graph + risks + controls out.
+
+Enhanced with Memory System:
+- Session-based memory management
+- Person profile tracking
+- Historical scenario recall
+- Memory export/import
 """
 
 from __future__ import annotations
@@ -10,6 +16,12 @@ from collections import Counter
 from typing import Any, Dict, List, Optional, Sequence
 
 from .insights import LLMFunc, WorkplaceInsightEngine
+
+try:
+    from .memory_engine import WorkplaceMemoryEngine
+    HAS_MEMORY_ENGINE = True
+except ImportError:
+    HAS_MEMORY_ENGINE = False
 
 
 class InputHarness:
@@ -36,6 +48,8 @@ class ReasoningHarness:
         org_chart: Sequence[Dict[str, Any]] = (),
         question: str = "",
         use_llm: bool = True,
+        use_memory: bool = True,
+        save_to_memory: bool = True,
     ) -> Dict[str, Any]:
         return await self.engine.analyze(
             chat_messages=chat_messages,
@@ -43,6 +57,8 @@ class ReasoningHarness:
             org_chart=org_chart,
             question=question,
             use_llm=use_llm,
+            use_memory=use_memory,
+            save_to_memory=save_to_memory,
         )
 
 
@@ -149,10 +165,38 @@ class WorkplaceInsightHarness:
     """One-box workplace insight harness.
 
     This is the recommended public facade for product integrations.
+    
+    Enhanced with Memory System:
+    - Session-based memory management
+    - Person profile tracking
+    - Historical scenario recall
     """
 
-    def __init__(self, llm_func: Optional[LLMFunc] = None, engine: Optional[WorkplaceInsightEngine] = None):
-        self.engine = engine or WorkplaceInsightEngine(llm_func=llm_func)
+    def __init__(
+        self, 
+        llm_func: Optional[LLMFunc] = None, 
+        engine: Optional[WorkplaceInsightEngine] = None,
+        memory_engine: Optional[WorkplaceMemoryEngine] = None,
+        session_id: Optional[str] = None,
+        enable_memory: bool = True,
+    ):
+        self.enable_memory = enable_memory and HAS_MEMORY_ENGINE
+        
+        if self.enable_memory:
+            self.memory = memory_engine or WorkplaceMemoryEngine(session_id=session_id)
+            self.engine = engine or WorkplaceInsightEngine(
+                llm_func=llm_func,
+                memory_engine=self.memory,
+                session_id=session_id,
+                enable_memory=True,
+            )
+        else:
+            self.memory = None
+            self.engine = engine or WorkplaceInsightEngine(
+                llm_func=llm_func,
+                enable_memory=False,
+            )
+        
         self.input = InputHarness(self.engine)
         self.reasoning = ReasoningHarness(self.engine)
         self.graph = GraphHarness()
@@ -215,5 +259,65 @@ class WorkplaceInsightHarness:
                 "control_harness",
             ],
             "contract": "one_information_bundle_to_evidence_grounded_graph",
+            "memory_enabled": self.enable_memory,
         }
+        
+        # 添加记忆统计
+        if self.enable_memory and self.memory:
+            result["memory_stats"] = self.memory.get_stats()
+        
         return result
+    
+    # === 记忆管理公共方法 ===
+    
+    def get_memory_stats(self) -> Optional[Dict[str, Any]]:
+        """获取记忆系统统计信息"""
+        if self.enable_memory and self.memory:
+            return self.memory.get_stats()
+        return None
+    
+    def export_memory(self) -> Optional[Dict[str, Any]]:
+        """导出记忆到字典"""
+        if self.enable_memory and self.memory:
+            return self.memory.export_memory()
+        return None
+    
+    def import_memory(self, memory_data: Dict[str, Any]) -> bool:
+        """从字典导入记忆"""
+        if self.enable_memory and self.memory:
+            self.memory.import_memory(memory_data)
+            return True
+        return False
+    
+    def get_person_profile(self, name: str) -> Optional[Dict[str, Any]]:
+        """获取人物画像"""
+        if self.enable_memory and self.memory:
+            profile = self.memory.get_person_profile(name)
+            if profile:
+                return {
+                    "name": profile.name,
+                    "title": profile.title,
+                    "team": profile.team,
+                    "traits": profile.traits,
+                    "risk_signals": profile.risk_signals,
+                    "evidence_snippets": profile.evidence_snippets[-10:],
+                }
+        return None
+    
+    async def record_user_feedback(self, feedback: Dict[str, Any]) -> bool:
+        """记录用户反馈，用于改进记忆"""
+        if self.enable_memory and self.memory:
+            self.memory._feedback_history.append(feedback)
+            return True
+        return False
+    
+    def clear_session_memory(self) -> bool:
+        """清空当前会话的记忆"""
+        if self.enable_memory and self.memory:
+            # 重新初始化记忆
+            session_id = self.memory.session_id
+            self.memory = WorkplaceMemoryEngine(session_id=session_id)
+            # 更新引擎中的记忆引用
+            self.engine.memory = self.memory
+            return True
+        return False
