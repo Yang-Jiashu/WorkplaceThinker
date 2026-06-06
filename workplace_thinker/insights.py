@@ -298,9 +298,11 @@ class WorkplaceInsightEngine:
         }
 
     def _parse_org_line(self, line: str) -> Optional[Dict[str, Any]]:
-        if not any(token in line for token in ("组织", "架构", "汇报", "上级", "manager", "Manager", "团队", "team", "Team", "title", "岗位", "角色", "负责人")):
+        if not any(token in line for token in ("组织", "架构", "汇报", "上级", "manager", "Manager", "团队", "team", "Team", "title", "岗位", "角色", "负责人", "reports to", "Reports to")):
             return None
         body = re.sub(r"^\s*(?:组织架构|组织|人员|成员|org\s*chart|org)[:：]?\s*", "", line, flags=re.I).strip()
+        if not body:
+            return None
         parts = [p.strip() for p in re.split(r"[-—|,，;；]", body) if p.strip()]
         name = ""
         if parts:
@@ -310,14 +312,16 @@ class WorkplaceInsightEngine:
                 name = direct.group(1)
         if not name:
             names = extract_people(body)
+            # 过滤掉常见的非人名误判
+            names = [n for n in names if n not in ("组织架构", "组织", "架构", "人员", "团队")]
             name = names[0] if names else ""
-        if not name:
+        if not name or name in ("组织架构", "组织", "架构", "人员", "团队"):
             return None
         manager = ""
-        manager_match = re.search(r"(?:汇报(?:给|到)?|上级[:：=]?|manager[:：=]?)\s*([\u4e00-\u9fff]{2,4}|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})", line, flags=re.I)
+        manager_match = re.search(r"(?:汇报(?:给|到)?|上级[:：=]?|manager[:：=]?|reports\s*to[:：=]?)\s*([\u4e00-\u9fff]{2,4}|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})", line, flags=re.I)
         if manager_match:
             manager = manager_match.group(1)
-        elif "汇报" in line or "上级" in line or "manager" in line.lower():
+        elif "汇报" in line or "上级" in line or "manager" in line.lower() or "reports to" in line.lower():
             names = [n for n in extract_people(body) if n != name]
             manager = names[0] if names else ""
 
@@ -327,14 +331,14 @@ class WorkplaceInsightEngine:
             title = title_match.group(1).strip()
         elif any(sep in line for sep in ("-", "—", "|", "，", ",")):
             for part in parts:
-                if name not in part and not any(k in part for k in ("汇报", "上级", "manager", "团队", "team", "组织", "架构")):
+                if name not in part and not any(k in part for k in ("汇报", "上级", "manager", "reports to", "团队", "team", "组织", "架构")):
                     title = part
                     break
 
         team = ""
         for part in parts:
-            if "团队" in part:
-                candidate = part.replace("团队", "").strip(" ：:=_-—")
+            if "团队" in part or "team" in part.lower():
+                candidate = re.sub(r"(?i)团队|team", "", part).strip(" ：:=_-—")
                 if candidate and name not in candidate:
                     team = candidate
                     break
@@ -490,6 +494,11 @@ class WorkplaceInsightEngine:
         uncertainty_checklist = self._generate_uncertainty_checklist(edges, risks, hypotheses)
         # 生成多重假设分析
         multiple_hypotheses = self._generate_multiple_hypotheses(evidence, edges, risks, question)
+        
+        # Add behavioral styles
+        from .conversation_engine import detect_behavioral_style
+        for p_node in person_nodes:
+            p_node["behavioral_style"] = detect_behavioral_style(p_node["label"], risks, edges)
         
         # P0 改进 1: 结果分级
         prioritized = self._prioritize_results(risks, hypotheses, [])

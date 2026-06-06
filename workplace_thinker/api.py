@@ -69,6 +69,13 @@ class MemoryImportRequest(BaseModel):
     memory_data: Dict[str, Any]
 
 
+class FeedbackRequest(BaseModel):
+    session_id: str
+    item_type: str
+    item_id: str
+    action: str
+    user_note: str = ""
+
 # === 应用初始化 ===
 app = FastAPI(
     title="WorkplaceThinker",
@@ -119,6 +126,40 @@ async def analyze_workplace_raw(request: WorkplaceRawAnalyzeRequest) -> Dict[str
     result["session_id"] = session_id
     return result
 
+
+@app.post("/api/v1/workplace/feedback")
+async def record_feedback(request: FeedbackRequest) -> Dict[str, Any]:
+    """记录用户反馈"""
+    if request.session_id not in active_sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    feedback_data = {
+        "analysis_id": "api_feedback",
+        "item_type": request.item_type,
+        "item_id": request.item_id,
+        "action": request.action,
+        "user_note": request.user_note
+    }
+    fid = active_sessions[request.session_id].record_user_feedback(feedback_data)
+    return {"success": bool(fid), "feedback_id": fid}
+
+@app.get("/api/v1/conversation/suggest/{session_id}")
+async def suggest_questions(session_id: str) -> Dict[str, Any]:
+    """获取对话追问建议"""
+    if session_id not in active_sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    suggestions = active_sessions[session_id].suggest_follow_up_questions()
+    return {"suggestions": suggestions}
+
+@app.get("/api/v1/conversation/summary/{session_id}")
+async def conversation_summary(session_id: str) -> Dict[str, Any]:
+    """获取对话上下文总结"""
+    if session_id not in active_sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    summary = active_sessions[session_id].get_conversation_summary()
+    return {"summary": summary}
 
 # === 记忆管理 API ===
 @app.get("/api/v1/memory/sessions")

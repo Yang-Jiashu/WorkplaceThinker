@@ -623,6 +623,68 @@ def analyze_temporal_patterns(
 
 
 # ===================================================================
+# 5. 职场行为风格识别 (DISC 简化版)
+# ===================================================================
+
+def detect_behavioral_style(person_name: str, risks: Sequence[Dict[str, Any]], edges: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    根据行为特征推断简化的职场行为风格
+    
+    返回: { "style": "主导型/Dominant", "description": "...", "communication_tip": "..." }
+    """
+    score_dominant = 0
+    score_avoidant = 0
+    score_compliant = 0
+    
+    for risk in risks:
+        people = risk.get("people", [])
+        if person_name not in people:
+            continue
+            
+        cat = risk.get("category", "")
+        if cat in ("power_pressure", "process_bypass"):
+            score_dominant += 1
+        if cat in ("ownership_ambiguity", "credit_blame"):
+            score_avoidant += 1
+        if cat in ("stance_volatility"):
+            score_compliant += 1
+            score_avoidant += 1
+            
+    for edge in edges:
+        if edge.get("source_name") == person_name:
+            t = edge.get("type", "")
+            if t == "blocks_or_challenges":
+                score_dominant += 1
+            if t == "supports":
+                score_compliant += 1
+                
+    # 判定风格
+    if score_dominant > max(score_avoidant, score_compliant) and score_dominant >= 1:
+        return {
+            "style": "主导型 (Dominant)",
+            "description": "行事果断，结果导向，有时可能忽视规则或他人感受。",
+            "communication_tip": "沟通时直奔主题，提供结论和选项，避免冗长背景铺垫。"
+        }
+    elif score_avoidant > max(score_dominant, score_compliant) and score_avoidant >= 1:
+        return {
+            "style": "回避型 (Avoidant)",
+            "description": "倾向于模糊责任边界，避免直接冲突或承诺。",
+            "communication_tip": "沟通时必须书面确认，把模糊的边界用RACI明确划分出来。"
+        }
+    elif score_compliant >= 1:
+        return {
+            "style": "顺从/随和型 (Compliant)",
+            "description": "通常比较配合，但可能容易改变立场或难以承受压力。",
+            "communication_tip": "沟通时给予安全感，帮助他们抗压，同时对重要共识做书面锁定。"
+        }
+    
+    return {
+        "style": "观察中 (Neutral)",
+        "description": "目前没有明显的极端行为风格特征。",
+        "communication_tip": "保持正常、职业的沟通方式，持续观察。"
+    }
+
+# ===================================================================
 # 4. 对话式追问支持
 # ===================================================================
 

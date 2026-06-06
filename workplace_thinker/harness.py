@@ -29,14 +29,24 @@ try:
 except ImportError:
     HAS_CONVERSATION = False
 
+try:
+    from .privacy_engine import PrivacyEngine
+    HAS_PRIVACY = True
+except ImportError:
+    HAS_PRIVACY = False
+
 
 class InputHarness:
-    """Normalize user-facing inputs into engine-ready context."""
+    """Normalize user-facing inputs into engine-ready context. Includes auto-redaction."""
 
     def __init__(self, engine: WorkplaceInsightEngine):
         self.engine = engine
+        self.privacy = PrivacyEngine() if HAS_PRIVACY else None
 
     def normalize_information(self, information: str, *, question: str = "") -> Dict[str, Any]:
+        if self.privacy:
+            information = self.privacy.redact_text(information)
+            question = self.privacy.redact_text(question)
         return self.engine.parse_information(information, question=question)
 
 
