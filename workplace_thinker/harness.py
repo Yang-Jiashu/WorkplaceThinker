@@ -23,6 +23,12 @@ try:
 except ImportError:
     HAS_MEMORY_ENGINE = False
 
+try:
+    from .conversation_engine import ConversationEngine
+    HAS_CONVERSATION = True
+except ImportError:
+    HAS_CONVERSATION = False
+
 
 class InputHarness:
     """Normalize user-facing inputs into engine-ready context."""
@@ -201,6 +207,9 @@ class WorkplaceInsightHarness:
         self.reasoning = ReasoningHarness(self.engine)
         self.graph = GraphHarness()
         self.control = ControlHarness()
+        
+        # P0 改进: 对话引擎
+        self.conversation = ConversationEngine() if HAS_CONVERSATION else None
 
     async def analyze_information(
         self,
@@ -212,6 +221,13 @@ class WorkplaceInsightHarness:
     ) -> Dict[str, Any]:
         parsed = self.input.normalize_information(information, question=question)
         merged_org = list(org_chart or []) or parsed["org_chart"]
+        
+        # P0: 如果有对话历史，合并上下文
+        if self.conversation and self.conversation.conversation_history:
+            information, question = self.conversation.merge_with_previous_context(
+                information, question
+            )
+        
         result = await self.reasoning.analyze(
             chat_messages=parsed["chat_messages"],
             uploaded_texts=parsed["uploaded_texts"],
@@ -226,7 +242,19 @@ class WorkplaceInsightHarness:
             "chat_message_count": len(parsed["chat_messages"]),
             "uploaded_text_count": len(parsed["uploaded_texts"]),
         }
-        return self._enhance(result)
+        enhanced = self._enhance(result)
+        
+        # P0: 记录到对话历史
+        if self.conversation:
+            self.conversation.add_turn(
+                user_message=information,
+                user_question=question or parsed["question"],
+                analysis_result=enhanced,
+            )
+            # 添加追问建议
+            enhanced["follow_up_suggestions"] = self.conversation.suggest_follow_up_questions(enhanced)
+        
+        return enhanced
 
     async def analyze_structured(
         self,
@@ -362,3 +390,50 @@ class WorkplaceInsightHarness:
         if self.enable_memory and self.memory:
             return self.memory.get_user_feedback_history()
         return None
+    
+    # ====== P0: 对话式追问 ======
+    
+    def get_conversation_summary(self) -> Optional[Dict[str, Any]]:
+        """
+        获取对话总结
+        包括: 对话轮数、话题、关键人物、关键风险、关键洞察
+        """
+        if self.conversation:
+            return self.conversation.get_conversation_summary()
+        return None
+    
+    def get_conversation_context(self) -> Optional[Dict[str, Any]]:
+        """
+        获取当前对话的上下文摘要
+        """
+        if self.conversation:
+            return self.conversation.get_context_summary()
+        return None
+    
+    def suggest_follow_up_questions(
+        self, 
+        last_analysis: Optional[Dict[str, Any]] = None
+    ) -> Optional[List[Dict[str, Any]]]:
+        """
+        获取智能追问建议
+        返回: [{question, reason, expected_value, difficulty}, ...]
+        """
+        if not self.conversation:
+            return None
+        
+        if last_analysis is None and self.conversation.conversation_history:
+            last_analysis = self.conversation.conversation_history[-1].analysis_result
+        
+        if last_analysis is None:
+            return []
+        
+        return self.conversation.suggest_follow_up_questions(last_analysis)
+    
+    def clear_conversation(self) -> bool:
+        """
+        清空对话历史
+        """
+        if self.conversation:
+            self.conversation = ConversationEngine()
+            return True
+        return False

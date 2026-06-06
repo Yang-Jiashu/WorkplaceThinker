@@ -491,6 +491,13 @@ class WorkplaceInsightEngine:
         # 生成多重假设分析
         multiple_hypotheses = self._generate_multiple_hypotheses(evidence, edges, risks, question)
         
+        # P0 改进 1: 结果分级
+        prioritized = self._prioritize_results(risks, hypotheses, [])
+        # P0 改进 2: 行动建议（具体话术）
+        action_scripts = self._generate_action_scripts(risks, top_n=3)
+        # P0 改进 3: 时序分析
+        temporal_analysis = self._analyze_temporal_patterns(risks, hypotheses)
+        
         result = {
             "summary": summary,
             "graph": augmented_graph,
@@ -502,6 +509,10 @@ class WorkplaceInsightEngine:
             "evidence": [item.__dict__ for item in evidence],
             "uncertainty_checklist": uncertainty_checklist,
             "multiple_hypotheses": multiple_hypotheses,
+            # P0 新增字段
+            "prioritized_results": prioritized,
+            "action_scripts": action_scripts,
+            "temporal_analysis": temporal_analysis,
             "meta": {
                 "method": "rules_plus_optional_llm",
                 "llm_used": False,
@@ -757,6 +768,53 @@ class WorkplaceInsightEngine:
                 })
         
         return checklist[:15]  # 最多显示15个不确定性项目
+
+    def _prioritize_results(
+        self,
+        risks: Sequence[Dict[str, Any]],
+        hypotheses: Sequence[Dict[str, Any]],
+        questions: Sequence[str],
+    ) -> Dict[str, Any]:
+        """
+        P0 改进: 结果分级
+        按紧急度/重要度排序，避免信息过载
+        """
+        from .conversation_engine import prioritize_results
+        return prioritize_results(risks, hypotheses, questions)
+
+    def _generate_action_scripts(
+        self,
+        risks: Sequence[Dict[str, Any]],
+        top_n: int = 3,
+    ) -> List[Dict[str, Any]]:
+        """
+        P0 改进: 行动建议模板
+        为高优先级风险生成具体话术
+        """
+        from .conversation_engine import generate_action_scripts
+        return generate_action_scripts(risks, top_n)
+
+    def _analyze_temporal_patterns(
+        self,
+        risks: Sequence[Dict[str, Any]],
+        hypotheses: Sequence[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """
+        P0 改进: 时序分析
+        识别反复出现的风险模式、立场变化、升级趋势
+        """
+        from .conversation_engine import analyze_temporal_patterns
+        # 简化版：基于当前分析中的时序信号
+        current_analysis = {
+            "risks": risks,
+            "hypotheses": hypotheses,
+            "timestamp": __import__('time').time(),
+        }
+        # 从 memory 中获取历史
+        historical_analyses = []
+        if self.memory and hasattr(self.memory, '_historical_analyses'):
+            historical_analyses = list(self.memory._historical_analyses)
+        return analyze_temporal_patterns(historical_analyses, current_analysis)
 
     def _generate_multiple_hypotheses(
         self,
