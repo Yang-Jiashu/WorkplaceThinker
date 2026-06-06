@@ -83,10 +83,13 @@ class GraphHarness:
 
     legend = [
         {"type": "person", "shape": "circle", "label": "人物", "color": "#4b6f8f"},
+        {"type": "work_object", "shape": "hexagon", "label": "工作对象", "color": "#b7892d"},
         {"type": "risk_signal", "shape": "rounded-square", "label": "风险信号", "color": "#b85c38"},
         {"type": "hidden_hypothesis", "shape": "diamond", "label": "隐藏假设", "color": "#8a5f87"},
         {"type": "formal_reports_to", "shape": "edge", "label": "正式汇报关系", "color": "#4b6f8f"},
         {"type": "supports", "shape": "edge", "label": "支持 / 协作", "color": "#54746b"},
+        {"type": "owns_work", "shape": "edge", "label": "负责工作", "color": "#b7892d"},
+        {"type": "approves_work", "shape": "edge", "label": "审批 / 授权", "color": "#b7892d"},
         {"type": "mentions_risk", "shape": "dashed-edge", "label": "涉及风险", "color": "#b85c38"},
         {"type": "supports_hypothesis", "shape": "dotted-edge", "label": "支持假设", "color": "#8a5f87"},
     ]
@@ -228,6 +231,8 @@ class WorkplaceInsightHarness:
         question: str = "",
         org_chart: Sequence[Dict[str, Any]] = (),
         use_llm: bool = True,
+        use_memory: bool = True,
+        save_to_memory: bool = True,
     ) -> Dict[str, Any]:
         parsed = self.input.normalize_information(information, question=question)
         merged_org = list(org_chart or []) or parsed["org_chart"]
@@ -244,6 +249,8 @@ class WorkplaceInsightHarness:
             org_chart=merged_org,
             question=question or parsed["question"],
             use_llm=use_llm,
+            use_memory=use_memory,
+            save_to_memory=save_to_memory,
         )
         result.setdefault("meta", {})["input_mode"] = "raw_information"
         result["parsed_input"] = {
@@ -274,6 +281,8 @@ class WorkplaceInsightHarness:
         org_chart: Sequence[Dict[str, Any]] = (),
         question: str = "",
         use_llm: bool = True,
+        use_memory: bool = True,
+        save_to_memory: bool = True,
     ) -> Dict[str, Any]:
         result = await self.reasoning.analyze(
             chat_messages=chat_messages,
@@ -281,6 +290,8 @@ class WorkplaceInsightHarness:
             org_chart=org_chart,
             question=question,
             use_llm=use_llm,
+            use_memory=use_memory,
+            save_to_memory=save_to_memory,
         )
         result.setdefault("meta", {})["input_mode"] = "structured"
         return self._enhance(result)
@@ -288,6 +299,7 @@ class WorkplaceInsightHarness:
     def _enhance(self, result: Dict[str, Any]) -> Dict[str, Any]:
         result["graph_view"] = self.graph.summarize(result)
         result["control_manifest"] = self.control.build(result)
+        result["person_histories"] = self._build_person_histories(result)
         result["harness"] = {
             "name": "Workplace Insight Harness",
             "layers": [
@@ -309,6 +321,102 @@ class WorkplaceInsightHarness:
             result["graph_timeline"] = self.memory.get_graph_timeline()
         
         return result
+
+    def _build_person_histories(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        people = result.get("people") or []
+        relationships = result.get("relationships") or []
+        risks = result.get("risks") or []
+        behaviors = result.get("behavior_observations") or []
+        jargon_signals = result.get("jargon_signals") or []
+        evidence_items = result.get("evidence") or []
+        work_graph = result.get("work_graph") or {}
+        work_edges = work_graph.get("edges") or []
+
+        evidence_by_id = {str(item.get("id")): item for item in evidence_items}
+        histories: Dict[str, Any] = {}
+
+        for person in people:
+            name = str(person.get("label") or person.get("name") or "").strip()
+            if not name:
+                continue
+
+            related_relationships = [
+                item for item in relationships
+                if name in {str(item.get("source_name") or ""), str(item.get("target_name") or "")}
+            ]
+            related_risks = [
+                item for item in risks
+                if name in [str(p) for p in item.get("people", []) or []]
+            ]
+            related_behaviors = [
+                item for item in behaviors
+                if str(item.get("person") or "") == name
+            ]
+            related_work_edges = [
+                item for item in work_edges
+                if str(item.get("source_name") or "") == name
+            ]
+            related_jargon = [
+                item for item in jargon_signals
+                if name in [str(p) for p in item.get("people", []) or []]
+            ]
+
+            evidence_ids: List[str] = []
+            for collection in (related_relationships, related_risks, related_behaviors, related_work_edges, related_jargon):
+                for item in collection:
+                    evidence_ids.extend(str(eid) for eid in item.get("evidence_ids", []) or [])
+            evidence_ids.extend(str(eid) for eid in person.get("evidence_ids", []) or [])
+            evidence_ids = list(dict.fromkeys(evidence_ids))
+
+            memory_profile = None
+            historical_summaries: List[Dict[str, Any]] = []
+            if self.enable_memory and self.memory:
+                profile = self.memory.get_person_profile(name)
+                if profile:
+                    memory_profile = {
+                        "name": profile.name,
+                        "title": profile.title,
+                        "team": profile.team,
+                        "traits": profile.traits,
+                        "risk_signals": profile.risk_signals,
+                        "collaboration_style": profile.collaboration_style,
+                        "communication_preference": profile.communication_preference,
+                        "evidence_snippets": profile.evidence_snippets[-10:],
+                        "last_updated": profile.last_updated,
+                    }
+
+                for analysis in list(getattr(self.memory, "_historical_analyses", []))[-20:]:
+                    analysis_people = {
+                        str(p.get("label") or p.get("name") or "")
+                        for p in analysis.get("people", []) or []
+                    }
+                    if name not in analysis_people:
+                        continue
+                    historical_summaries.append(
+                        {
+                            "id": analysis.get("id"),
+                            "timestamp": analysis.get("timestamp"),
+                            "summary": analysis.get("summary", ""),
+                            "risk_titles": [r.get("title", "") for r in (analysis.get("risks") or []) if name in (r.get("people") or [])][:5],
+                        }
+                    )
+
+            histories[name] = {
+                "person": person,
+                "memory_profile": memory_profile,
+                "current": {
+                    "relationships": related_relationships,
+                    "risks": related_risks,
+                    "behavior_observations": related_behaviors,
+                    "work_edges": related_work_edges,
+                    "jargon_signals": related_jargon,
+                    "evidence": [evidence_by_id[eid] for eid in evidence_ids if eid in evidence_by_id],
+                },
+                "history": historical_summaries[-10:],
+                "safety_note": "这是基于证据的互动记录和行为信号，不是人格定性。",
+            }
+
+        return histories
     
     # === 记忆管理公共方法 ===
     

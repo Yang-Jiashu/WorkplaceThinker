@@ -109,6 +109,8 @@ async def analyze_workplace(request: WorkplaceAnalyzeRequest) -> Dict[str, Any]:
         org_chart=request.org_chart,
         question=request.question,
         use_llm=request.use_llm,
+        use_memory=request.use_memory,
+        save_to_memory=request.save_to_memory,
     )
     result["session_id"] = session_id
     return result
@@ -122,6 +124,8 @@ async def analyze_workplace_raw(request: WorkplaceRawAnalyzeRequest) -> Dict[str
         question=request.question,
         org_chart=request.org_chart,
         use_llm=request.use_llm,
+        use_memory=request.use_memory,
+        save_to_memory=request.save_to_memory,
     )
     result["session_id"] = session_id
     return result
@@ -245,4 +249,3 @@ async def delete_session(session_id: str) -> Dict[str, Any]:
         del active_sessions[session_id]
         return {"session_id": session_id, "deleted": True}
     raise HTTPException(status_code=404, detail="Session not found")
-

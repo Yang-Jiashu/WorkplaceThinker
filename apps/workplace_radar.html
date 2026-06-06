@@ -90,6 +90,26 @@
     .hyp { border-color: #d8c4d5; background: #fbf4fa; }
     .chip { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; font-size: 11px; color: var(--muted); margin: 3px 4px 0 0; }
     .small { font-size: 12px; color: var(--muted); }
+    .tabs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 16px 0 18px; }
+    .tab {
+      border-radius: 8px;
+      padding: 10px 12px;
+      text-align: center;
+    }
+    .tab.active { background: var(--lake); border-color: var(--lake); color: #fffefa; }
+    .view { display: none; }
+    .view.active { display: block; }
+    .person-list { display: grid; gap: 8px; }
+    .person-card {
+      display: block;
+      width: 100%;
+      border-radius: 8px;
+      padding: 12px;
+      text-align: left;
+    }
+    .person-card-grid { display: grid; gap: 10px; }
+    .person-detail { margin-top: 10px; }
+    .back-row { margin-bottom: 12px; }
     @media (max-width: 1100px) {
       .shell { grid-template-columns: 1fr; }
       aside, main { border-right: 0; border-bottom: 1px solid var(--line); }
@@ -153,19 +173,42 @@
         <div class="metric"><span class="small">关系</span><strong id="m-edges">0</strong></div>
         <div class="metric"><span class="small">风险</span><strong id="m-risks">0</strong></div>
       </div>
-      <h3>总结</h3>
-      <p id="summary">等待分析。</p>
-      <h3>隐藏假设</h3>
-      <div id="hypotheses"></div>
-      <h3>风险信号</h3>
-      <div id="risks"></div>
-      <h3>建议确认问题</h3>
-      <div id="questions"></div>
-      <h3>控制动作</h3>
-      <div id="actions"></div>
+      <div class="tabs">
+        <button id="tab-overview" class="tab active" onclick="setView('overview')">分析总览</button>
+        <button id="tab-people" class="tab" onclick="setView('people')">人物档案</button>
+      </div>
+      <div id="view-overview" class="view active">
+        <h3>总结</h3>
+        <p id="summary">等待分析。</p>
+        <h3>隐藏假设</h3>
+        <div id="hypotheses"></div>
+        <h3>风险信号</h3>
+        <div id="risks"></div>
+        <h3>工作内容网</h3>
+        <div id="work"></div>
+        <h3>行为观察</h3>
+        <div id="behavior"></div>
+        <h3>互联网语义</h3>
+        <div id="jargon"></div>
+        <h3>知识框架</h3>
+        <div id="knowledge"></div>
+        <h3>建议确认问题</h3>
+        <div id="questions"></div>
+        <h3>控制动作</h3>
+        <div id="actions"></div>
+      </div>
+      <div id="view-people" class="view">
+        <div id="people-directory"></div>
+        <div id="person-detail"></div>
+      </div>
     </section>
   </div>
   <script>
+    let currentData = null;
+    let selectedPerson = '';
+    let activeView = 'overview';
+    let peopleMode = 'directory';
+
     const fallback = {
       summary: "识别到 3 个相关人物、5 条关系边。主要风险：流程绕过、信息不对称、责任边界不清。所有隐藏问题均以假设呈现，需要回到证据和确认问题验证。",
       graph: {
@@ -238,6 +281,7 @@
     function loadSample() { render(fallback); }
 
     function render(data) {
+      currentData = data;
       document.getElementById('summary').textContent = data.summary || '';
       const nodes = data.graph?.nodes || [];
       const edges = data.graph?.edges || [];
@@ -245,8 +289,13 @@
       document.getElementById('m-people').textContent = nodes.filter(n => (n.type || 'person') === 'person').length;
       document.getElementById('m-edges').textContent = edges.length;
       document.getElementById('m-risks').textContent = risks.length;
+      renderPeopleDirectory(data);
       renderList('hypotheses', data.hidden_hypotheses || [], true);
       renderList('risks', risks, false);
+      renderWork(data.work_graph || {});
+      renderBehavior(data.behavior_observations || []);
+      renderJargon(data.jargon_signals || []);
+      renderKnowledge(data.knowledge_context || {});
       document.getElementById('questions').innerHTML = (data.recommended_questions || []).map(q => `<div class="card"><p>${escapeHtml(q)}</p></div>`).join('');
       document.getElementById('actions').innerHTML = ((data.control_manifest || {}).actions || []).map(a => `
         <div class="card">
@@ -258,6 +307,146 @@
       drawGraph(nodes, edges);
     }
 
+    function setView(view) {
+      activeView = view;
+      document.getElementById('tab-overview').classList.toggle('active', view === 'overview');
+      document.getElementById('tab-people').classList.toggle('active', view === 'people');
+      document.getElementById('view-overview').classList.toggle('active', view === 'overview');
+      document.getElementById('view-people').classList.toggle('active', view === 'people');
+      if (view === 'people') renderPeopleDirectory(currentData || fallback);
+    }
+
+    function getPeople(data) {
+      const explicit = data.people || [];
+      if (explicit.length) return explicit.map(p => ({...p, label: p.label || p.name}));
+      return (data.graph?.nodes || []).filter(n => (n.type || 'person') === 'person');
+    }
+
+    function getPersonHistory(data, name) {
+      const histories = data.person_histories || {};
+      if (histories[name]) return histories[name];
+      const graph = data.graph || {};
+      const personNode = getPeople(data).find(p => (p.label || p.name) === name) || {label: name};
+      return {
+        person: personNode,
+        memory_profile: null,
+        current: {
+          relationships: (graph.edges || []).filter(e => {
+            const nodeById = Object.fromEntries((graph.nodes || []).map(n => [n.id, n]));
+            return [e.source, e.target].some(id => (nodeById[id]?.label || '') === name);
+          }),
+          risks: (data.risks || []).filter(r => (r.people || []).includes(name)),
+          behavior_observations: (data.behavior_observations || []).filter(b => b.person === name),
+          work_edges: (data.work_graph?.edges || []).filter(e => e.source_name === name),
+          jargon_signals: (data.jargon_signals || []).filter(j => (j.people || []).includes(name)),
+          evidence: [],
+        },
+        history: [],
+        safety_note: '这是基于证据的互动记录和行为信号，不是人格定性。',
+      };
+    }
+
+    function renderPeopleDirectory(data) {
+      const people = getPeople(data);
+      if (!people.length) {
+        selectedPerson = '';
+        document.getElementById('people-directory').innerHTML = '<p class="small">暂无明确人物。</p>';
+        document.getElementById('person-detail').innerHTML = '';
+        return;
+      }
+      if (!selectedPerson || !people.some(p => (p.label || p.name) === selectedPerson)) {
+        selectedPerson = people[0].label || people[0].name;
+      }
+      if (peopleMode === 'detail') {
+        document.getElementById('people-directory').innerHTML = '';
+        renderPersonDetail(data, selectedPerson);
+        return;
+      }
+      document.getElementById('person-detail').innerHTML = '';
+      document.getElementById('people-directory').innerHTML = `
+        <h3>人物档案</h3>
+        <p class="small">像查企业/查人一样，先看名单，再点进单人档案看证据、关系、工作内容和历史记录。</p>
+        <div class="person-card-grid">
+          ${people.map(p => {
+        const name = p.label || p.name || '';
+        const hist = getPersonHistory(data, name);
+        const riskCount = hist.current.risks.length;
+        const workCount = hist.current.work_edges.length;
+        const relationCount = hist.current.relationships.length;
+        const historyCount = hist.history.length;
+        return `
+          <button class="person-card" onclick="openPerson('${escapeAttr(name)}')">
+            <strong>${escapeHtml(name)}</strong>
+            <p class="small">${escapeHtml([p.title, p.team].filter(Boolean).join(' · ') || '未标注角色')}</p>
+            <span class="chip">${relationCount} 关系</span>
+            <span class="chip">${riskCount} 风险</span>
+            <span class="chip">${workCount} 工作</span>
+            <span class="chip">${historyCount} 过往</span>
+          </button>
+        `;
+      }).join('')}
+        </div>
+      `;
+    }
+
+    function openPerson(name) {
+      selectedPerson = name;
+      peopleMode = 'detail';
+      setView('people');
+      renderPeopleDirectory(currentData || fallback);
+    }
+
+    function backToPeopleDirectory() {
+      peopleMode = 'directory';
+      renderPeopleDirectory(currentData || fallback);
+    }
+
+    function renderPersonDetail(data, name) {
+      const hist = getPersonHistory(data, name);
+      const profile = hist.memory_profile;
+      const current = hist.current || {};
+      const relationships = current.relationships || [];
+      const risks = current.risks || [];
+      const behaviors = current.behavior_observations || [];
+      const workEdges = current.work_edges || [];
+      const jargon = current.jargon_signals || [];
+      const evidence = current.evidence || [];
+      const history = hist.history || [];
+      document.getElementById('people-directory').innerHTML = `
+        <button class="back-row" onclick="backToPeopleDirectory()">← 返回人物名单</button>
+      `;
+      document.getElementById('person-detail').innerHTML = `
+        <div class="card person-detail">
+          <strong>${escapeHtml(name)} 的档案</strong>
+          <p>${escapeHtml(hist.safety_note || '')}</p>
+          ${profile ? `<p class="small">长期记忆：${escapeHtml((profile.risk_signals || []).slice(0, 6).join('、') || '暂无风险模式')} ${profile.last_updated ? '· 已更新' : ''}</p>` : '<p class="small">暂无长期记忆画像。</p>'}
+          <div>
+            <span class="chip">${relationships.length} 关系</span>
+            <span class="chip">${risks.length} 风险</span>
+            <span class="chip">${behaviors.length} 行为观察</span>
+            <span class="chip">${workEdges.length} 工作关联</span>
+          </div>
+        </div>
+        ${section('相关关系', relationships.map(r => `${r.source_name || r.source} → ${r.target_name || r.target}：${r.label || r.type}`))}
+        ${section('风险信号', risks.map(r => `${r.title || r.category}：${r.suggestion || r.evidence_text || ''}`))}
+        ${section('行为观察', behaviors.map(b => `${b.label}：${b.description || ''}`))}
+        ${section('工作关联', workEdges.slice(0, 8).map(e => `${e.label || e.type}：${e.target_name || e.target}`))}
+        ${section('互联网语义', jargon.map(j => `${j.label}：${(j.terms || []).join('、')}。${j.interpretation || ''}`))}
+        ${section('证据', evidence.slice(0, 8).map(e => `${e.id}: ${e.text}`))}
+        ${section('过往分析', history.map(h => `${formatTime(h.timestamp)}：${h.summary || ''}`))}
+      `;
+    }
+
+    function section(title, items) {
+      if (!items || !items.length) return '';
+      return `
+        <div class="card person-detail">
+          <strong>${escapeHtml(title)}</strong>
+          ${items.map(item => `<p class="small">${escapeHtml(item)}</p>`).join('')}
+        </div>
+      `;
+    }
+
     function renderList(id, items, hypothesis) {
       document.getElementById(id).innerHTML = items.map(item => `
         <div class="card ${hypothesis ? 'hyp' : 'risk'}">
@@ -267,6 +456,48 @@
           ${(item.people || []).map(p => `<span class="chip">${escapeHtml(p)}</span>`).join('')}
         </div>
       `).join('') || '<p class="small">暂无。</p>';
+    }
+
+    function renderWork(workGraph) {
+      const nodes = workGraph.nodes || [];
+      const edges = workGraph.edges || [];
+      document.getElementById('work').innerHTML = `
+        <div class="card">
+          <strong>${nodes.length} 个工作对象 / ${edges.length} 条工作关系</strong>
+          <p>${nodes.slice(0, 5).map(n => escapeHtml(n.label || n.category)).join('、') || '暂无明确工作对象。'}</p>
+        </div>
+      `;
+    }
+
+    function renderBehavior(items) {
+      document.getElementById('behavior').innerHTML = items.slice(0, 6).map(item => `
+        <div class="card">
+          <strong>${escapeHtml(item.person || '')} · ${escapeHtml(item.label || '')}</strong>
+          <p>${escapeHtml(item.description || '')}</p>
+          <span class="chip">${escapeHtml(item.status || 'observable_pattern')}</span>
+        </div>
+      `).join('') || '<p class="small">暂无。</p>';
+    }
+
+    function renderJargon(items) {
+      document.getElementById('jargon').innerHTML = items.slice(0, 8).map(item => `
+        <div class="card">
+          <strong>${escapeHtml(item.label || item.category || '')}</strong>
+          <p>${escapeHtml(item.interpretation || '')}</p>
+          ${(item.terms || []).map(term => `<span class="chip">${escapeHtml(term)}</span>`).join('')}
+        </div>
+      `).join('') || '<p class="small">暂无。</p>';
+    }
+
+    function renderKnowledge(context) {
+      const frames = context.active_frames || [];
+      document.getElementById('knowledge').innerHTML = frames.map(frame => `
+        <div class="card">
+          <strong>${escapeHtml(frame.label || frame.id || '')}</strong>
+          <p>${escapeHtml(frame.principle || '')}</p>
+          <span class="chip">${escapeHtml((frame.triggered_by || []).join(' / '))}</span>
+        </div>
+      `).join('') || '<p class="small">暂无特定框架触发。</p>';
     }
 
     function drawGraph(nodes, edges) {
@@ -293,6 +524,8 @@
           g.appendChild(el('rect', {x:p.x - 44, y:p.y - 28, width:88, height:56, rx:12, fill:color, stroke:'#fffefa', 'stroke-width':4}));
         } else if (n.type === 'hidden_hypothesis') {
           g.appendChild(el('polygon', {points:`${p.x},${p.y-42} ${p.x+52},${p.y} ${p.x},${p.y+42} ${p.x-52},${p.y}`, fill:color, stroke:'#fffefa', 'stroke-width':4}));
+        } else if (n.type === 'work_object') {
+          g.appendChild(el('polygon', {points:`${p.x-48},${p.y-28} ${p.x+48},${p.y-28} ${p.x+60},${p.y} ${p.x+48},${p.y+28} ${p.x-48},${p.y+28} ${p.x-60},${p.y}`, fill:color, stroke:'#fffefa', 'stroke-width':4}));
         } else {
           g.appendChild(el('circle', {cx:p.x, cy:p.y, r:42, fill:color}));
         }
@@ -308,6 +541,7 @@
     function nodeColor(n, i) {
       if (n.type === 'risk_signal') return '#b85c38';
       if (n.type === 'hidden_hypothesis') return '#8a5f87';
+      if (n.type === 'work_object') return '#b7892d';
       return ['#b85c38','#4b6f8f','#54746b','#8a5f87','#b7892d'][i % 5];
     }
     function text(svg, x, y, content) { if (content) svg.appendChild(el('text', {class:'edge-label', x, y, 'text-anchor':'middle'}, content)); }
@@ -318,6 +552,8 @@
       return node;
     }
     function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[s])); }
+    function escapeAttr(v) { return String(v ?? '').replace(/[\\'"]/g, '\\$&'); }
+    function formatTime(ts) { return ts ? new Date(ts * 1000).toLocaleString('zh-CN') : '未知时间'; }
     window.addEventListener('resize', () => render(fallback));
     render(fallback);
   </script>

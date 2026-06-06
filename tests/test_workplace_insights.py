@@ -30,6 +30,9 @@ class WorkplaceInsightEngineTest(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(result["meta"]["evidence_count"], 3)
         self.assertTrue(any(node["label"] == "张伟" for node in result["graph"]["nodes"]))
         self.assertTrue(any(node["type"] == "risk_signal" for node in result["graph"]["nodes"]))
+        self.assertIn("work_graph", result)
+        self.assertIn("knowledge_context", result)
+        self.assertTrue(any(node["type"] == "work_object" for node in result["graph"]["nodes"]))
 
 
 class WorkplaceInsightHarnessTest(unittest.IsolatedAsyncioTestCase):
@@ -58,6 +61,15 @@ class WorkplaceInsightHarnessTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("information_asymmetry", categories)
         self.assertTrue(result["hidden_hypotheses"])
         self.assertTrue(all(h["status"] == "hypothesis_not_fact" for h in result["hidden_hypotheses"]))
+        self.assertTrue(result["knowledge_context"]["active_frames"])
+        self.assertTrue(result["behavior_observations"])
+        self.assertTrue(all(o["status"] == "observable_pattern_not_personality" for o in result["behavior_observations"]))
+        self.assertIn("person_histories", result)
+        self.assertIn("张伟", result["person_histories"])
+        zhang_history = result["person_histories"]["张伟"]
+        self.assertIn("不是人格定性", zhang_history["safety_note"])
+        self.assertTrue(zhang_history["current"]["risks"])
+        self.assertTrue(zhang_history["current"]["evidence"])
 
     async def test_not_enough_evidence_is_safe(self):
         result = await WorkplaceInsightEngine().analyze(chat_messages=[], uploaded_texts=[], org_chart=[])
@@ -83,6 +95,31 @@ class WorkplaceInsightHarnessTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("raw_information", result["meta"]["input_mode"])
         self.assertTrue(result["risks"])
         self.assertTrue(any(node["type"] == "risk_signal" for node in result["graph"]["nodes"]))
+
+    async def test_work_and_knowledge_networks_are_injected(self):
+        result = await WorkplaceInsightEngine().analyze_information(
+            """
+            组织架构：张伟 - 产品负责人 - Product 团队 - 汇报王强
+            李娜提醒我，王强之前答应负责验收，但现在又改口说不是他负责。
+            张伟说这个需求周五必须上线，先不用审批，验收后面再补，大家先对齐口径。
+            王强说张伟负责方案，我负责文档和上线检查，后面我来闭环。
+            """,
+            question="工作内容和关系怎么拆？",
+        )
+        labels = {node["label"] for node in result["people"]}
+        self.assertIn("李娜", labels)
+        self.assertNotIn("王强之前", labels)
+        self.assertNotIn("周五上线", labels)
+        self.assertGreaterEqual(result["meta"]["work_object_count"], 1)
+        self.assertGreaterEqual(result["meta"]["knowledge_frame_count"], 1)
+        self.assertTrue(result["work_graph"]["nodes"])
+        self.assertTrue(result["work_graph"]["edges"])
+        self.assertGreaterEqual(result["meta"]["jargon_signal_count"], 1)
+        jargon_categories = {item["category"] for item in result["jargon_signals"]}
+        self.assertTrue({"alignment", "closure", "ownership", "schedule"} & jargon_categories)
+        self.assertTrue(result["knowledge_context"]["jargon_coverage"])
+        frame_ids = {frame["id"] for frame in result["knowledge_context"]["active_frames"]}
+        self.assertTrue({"raci", "decision_record", "boundary_setting"} & frame_ids)
 
 
 class WorkplaceInsightAPITest(unittest.TestCase):
@@ -118,6 +155,7 @@ class WorkplaceInsightAPITest(unittest.TestCase):
         self.assertEqual("raw_information", payload["meta"]["input_mode"])
         self.assertTrue(payload["risks"])
         self.assertIn("control_manifest", payload)
+        self.assertIn("person_histories", payload)
 
     @unittest.skipIf(TestClient is None or app is None, "fastapi is not installed")
     def test_home_serves_graph_ui(self):

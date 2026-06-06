@@ -29,6 +29,15 @@ try:
 except ImportError:
     HAS_MEMORY_ENGINE = False
 
+from .knowledge_injection import (
+    build_knowledge_context,
+    build_prompt_section,
+    infer_behavior_observations,
+    match_jargon_terms,
+    match_work_objects,
+    match_work_relations,
+)
+
 
 LLMFunc = Callable[[str], Awaitable[str]]
 
@@ -85,6 +94,12 @@ RELATION_TAXONOMY: Dict[str, Dict[str, Any]] = {
 CN_NAME_RE = re.compile(r"(?<![\u4e00-\u9fff])([\u4e00-\u9fff]{2,4})(?=(说|表示|认为|负责|推进|支持|反对|提醒|要求|汇报|承诺|答应|私下|和|与|跟|，|。|：|:|\s))")
 EN_NAME_RE = re.compile(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b")
 SENTENCE_RE = re.compile(r"(?<=[。！？!?；;])\s*|\n+")
+NAME_TEMPORAL_SUFFIXES = ("之前", "现在", "后来", "刚才")
+NAME_FALSE_POSITIVE_TOKENS = (
+    "周一", "周二", "周三", "周四", "周五", "周六", "周日",
+    "今天", "明天", "昨天", "上线", "验收", "审批", "需求", "方案",
+    "文档", "口径", "卡点", "流程", "项目", "任务",
+)
 
 
 @dataclass
@@ -117,19 +132,25 @@ def split_evidence(text: str, source: str) -> List[Evidence]:
 
 def extract_people(text: str, org_names: Sequence[str] = ()) -> List[str]:
     names: List[str] = []
+
+    def add_name(raw_name: str) -> None:
+        name = raw_name.strip()
+        for suffix in NAME_TEMPORAL_SUFFIXES:
+            if len(name) > 2 and name.endswith(suffix):
+                name = name[: -len(suffix)]
+                break
+        if any(token in name for token in NAME_FALSE_POSITIVE_TOKENS):
+            return
+        if name and name not in {"但是", "因为", "所以", "然后", "如果", "这个", "那个"} and name not in names:
+            names.append(name)
+
     for name in org_names:
         if name and name in text and name not in names:
             names.append(name)
-    if names:
-        return names[:10]
     for match in CN_NAME_RE.finditer(text):
-        name = match.group(1)
-        if name not in {"但是", "因为", "所以", "然后", "如果", "这个", "那个"} and name not in names:
-            names.append(name)
+        add_name(match.group(1))
     for match in EN_NAME_RE.finditer(text):
-        name = match.group(1)
-        if name not in names:
-            names.append(name)
+        add_name(match.group(1))
     return names[:10]
 
 
@@ -246,6 +267,8 @@ class WorkplaceInsightEngine:
         question: str = "",
         org_chart: Sequence[Dict[str, Any]] = (),
         use_llm: bool = True,
+        use_memory: bool = True,
+        save_to_memory: bool = True,
     ) -> Dict[str, Any]:
         """Analyze a single user-provided information bundle.
 
@@ -260,6 +283,8 @@ class WorkplaceInsightEngine:
             org_chart=merged_org,
             question=question or parsed["question"],
             use_llm=use_llm,
+            use_memory=use_memory,
+            save_to_memory=save_to_memory,
         )
         result.setdefault("meta", {})["input_mode"] = "raw_information"
         result["parsed_input"] = {
@@ -391,10 +416,16 @@ class WorkplaceInsightEngine:
         edge_map: Dict[tuple[str, str, str], Dict[str, Any]] = {}
         risks: List[Dict[str, Any]] = []
         risk_counts: Counter = Counter()
+        work_item_map: Dict[str, Dict[str, Any]] = {}
+        work_edge_map: Dict[tuple[str, str, str], Dict[str, Any]] = {}
+        jargon_signal_map: Dict[tuple[str, str], Dict[str, Any]] = {}
 
         for item in evidence:
             names = extract_people(item.text, org_names)
             relation_types = [kind for kind, rule in RELATION_TAXONOMY.items() if contains_any(item.text, rule["keywords"])]
+            work_matches = match_work_objects(item.text)
+            work_relations = match_work_relations(item.text)
+            jargon_matches = match_jargon_terms(item.text)
             for name in names:
                 people_mentions[name] += 1
                 people_evidence[name].append(item.id)
@@ -422,6 +453,62 @@ class WorkplaceInsightEngine:
                     )
                     edge["score"] = min(1.0, float(edge["score"]) + float(rule["weight"]))
                     edge["evidence_ids"].append(item.id)
+
+            for match in work_matches:
+                work_key = f"{match['category']}:{item.id}"
+                work_node = work_item_map.setdefault(
+                    work_key,
+                    {
+                        "id": stable_id("work", work_key),
+                        "label": match["label"],
+                        "type": "work_object",
+                        "category": match["category"],
+                        "description": match["description"],
+                        "evidence_ids": [],
+                    },
+                )
+                work_node["evidence_ids"].append(item.id)
+
+                for name in names[:4]:
+                    for relation in work_relations or [{"type": "mentions_work", "label": "涉及工作", "description": "人物与工作对象共同出现。"}]:
+                        edge_key = (name, work_node["id"], relation["type"])
+                        work_edge = work_edge_map.setdefault(
+                            edge_key,
+                            {
+                                "id": stable_id("work_edge", "|".join(edge_key)),
+                                "source": stable_id("person", name),
+                                "target": work_node["id"],
+                                "source_name": name,
+                                "target_name": work_node["label"],
+                                "type": relation["type"],
+                                "label": relation["label"],
+                                "description": relation["description"],
+                                "score": 0.46,
+                                "evidence_ids": [],
+                            },
+                        )
+                        work_edge["score"] = min(1.0, float(work_edge["score"]) + 0.12)
+                        work_edge["evidence_ids"].append(item.id)
+
+            for match in jargon_matches:
+                jargon_key = (match["category"], item.id)
+                signal = jargon_signal_map.setdefault(
+                    jargon_key,
+                    {
+                        "id": stable_id("jargon", "|".join(jargon_key)),
+                        "category": match["category"],
+                        "label": match["label"],
+                        "terms": [],
+                        "maps_to": match["maps_to"],
+                        "interpretation": match["interpretation"],
+                        "safe_question": match["safe_question"],
+                        "people": names,
+                        "evidence_ids": [],
+                        "status": "workplace_semantic_signal",
+                    },
+                )
+                signal["terms"] = list(dict.fromkeys(signal["terms"] + match["terms"]))
+                signal["evidence_ids"].append(item.id)
 
             for category, rule in RISK_TAXONOMY.items():
                 if not contains_any(item.text, rule["keywords"]):
@@ -483,10 +570,13 @@ class WorkplaceInsightEngine:
                 )
 
         edges = sorted(edge_map.values(), key=lambda e: (-float(e["score"]), e["label"]))[:50]
+        work_items = sorted(work_item_map.values(), key=lambda n: (n["category"], n["id"]))[:40]
+        work_relationships = sorted(work_edge_map.values(), key=lambda e: (-float(e["score"]), e["label"]))[:80]
+        jargon_signals = sorted(jargon_signal_map.values(), key=lambda s: (s["category"], s["id"]))[:40]
         risks = sorted(risks, key=lambda r: (-float(r["severity"]), -float(r["confidence"])))[:20]
         hypotheses = self._build_hypotheses(risk_counts, edges, risks)
         person_nodes = nodes
-        augmented_graph = self._augment_graph(person_nodes, edges, risks, hypotheses)
+        augmented_graph = self._augment_graph(person_nodes, edges, risks, hypotheses, work_items, work_relationships)
         # 构建记忆增强的摘要（如果有记忆）
         summary = self._summary(nodes, edges, risks, hypotheses, question, similar_scenarios)
         
@@ -499,6 +589,8 @@ class WorkplaceInsightEngine:
         from .conversation_engine import detect_behavioral_style
         for p_node in person_nodes:
             p_node["behavioral_style"] = detect_behavioral_style(p_node["label"], risks, edges)
+        behavior_observations = infer_behavior_observations(person_nodes, edges, risks)
+        knowledge_context = build_knowledge_context(risks, work_items, behavior_observations, jargon_signals)
         
         # P0 改进 1: 结果分级
         prioritized = self._prioritize_results(risks, hypotheses, [])
@@ -512,8 +604,19 @@ class WorkplaceInsightEngine:
             "graph": augmented_graph,
             "people": person_nodes,
             "relationships": edges,
+            "work_graph": {
+                "nodes": work_items,
+                "edges": work_relationships,
+                "summary": {
+                    "work_object_count": len(work_items),
+                    "work_relationship_count": len(work_relationships),
+                },
+            },
             "risks": risks,
             "hidden_hypotheses": hypotheses,
+            "behavior_observations": behavior_observations,
+            "jargon_signals": jargon_signals,
+            "knowledge_context": knowledge_context,
             "recommended_questions": self._recommended_questions(risk_counts, risks),
             "evidence": [item.__dict__ for item in evidence],
             "uncertainty_checklist": uncertainty_checklist,
@@ -529,6 +632,10 @@ class WorkplaceInsightEngine:
                 "org_people_count": len(org_people),
                 "memory_used": memory_context is not None,
                 "uncertainty_count": len(uncertainty_checklist),
+                "work_object_count": len(work_items),
+                "behavior_observation_count": len(behavior_observations),
+                "jargon_signal_count": len(jargon_signals),
+                "knowledge_frame_count": len(knowledge_context.get("active_frames", [])),
             },
         }
         
@@ -553,9 +660,11 @@ class WorkplaceInsightEngine:
         relation_edges: Sequence[Dict[str, Any]],
         risks: Sequence[Dict[str, Any]],
         hypotheses: Sequence[Dict[str, Any]],
+        work_nodes: Sequence[Dict[str, Any]] = (),
+        work_edges: Sequence[Dict[str, Any]] = (),
     ) -> Dict[str, List[Dict[str, Any]]]:
-        nodes = [dict(node) for node in people_nodes]
-        edges = [dict(edge) for edge in relation_edges]
+        nodes = [dict(node) for node in people_nodes] + [dict(node) for node in work_nodes]
+        edges = [dict(edge) for edge in relation_edges] + [dict(edge) for edge in work_edges]
         person_by_name = {str(node.get("label")): str(node.get("id")) for node in people_nodes}
 
         risk_nodes: List[Dict[str, Any]] = []
@@ -923,6 +1032,7 @@ class WorkplaceInsightEngine:
     def _build_llm_prompt(self, base: Dict[str, Any], evidence: Sequence[Evidence], org_people: Sequence[OrgPerson], question: str, memory_context: Optional[Dict[str, Any]] = None, similar_scenarios: Optional[List[Dict[str, Any]]] = None) -> str:
         evidence_lines = "\n".join(f"- {e.id}: {e.text}" for e in evidence[:80])
         org_lines = "\n".join(f"- {p.name} | {p.title} | {p.team} | manager={p.manager}" for p in org_people)
+        knowledge_section = build_prompt_section(base.get("knowledge_context") or {})
         
         memory_section = ""
         if memory_context:
@@ -956,6 +1066,7 @@ class WorkplaceInsightEngine:
 3. 输出建议要偏向确认、留痕、澄清边界，而不是鼓励算计或攻击别人。
 4. 只输出 JSON，不要 markdown。
 5. 如果有历史记忆，可将其作为参考但不要直接当成事实。
+6. 只能输出可观察行为模式，不能输出人格定性或读心式结论。
 
 用户关注：{question or "梳理职场关系和潜在风险"}
 
@@ -965,8 +1076,10 @@ class WorkplaceInsightEngine:
 证据：
 {evidence_lines}{memory_section}{scenarios_section}
 
+{knowledge_section}
+
 当前规则抽取结果摘要：
-{json.dumps({"summary": base.get("summary"), "risks": base.get("risks", [])[:8], "relationships": base.get("relationships", [])[:10]}, ensure_ascii=False)}
+{json.dumps({"summary": base.get("summary"), "risks": base.get("risks", [])[:8], "relationships": base.get("relationships", [])[:10], "work_graph": base.get("work_graph", {}), "behavior_observations": base.get("behavior_observations", [])[:8], "jargon_signals": base.get("jargon_signals", [])[:12]}, ensure_ascii=False)}
 
 请输出 JSON：
 {{
@@ -1013,5 +1126,7 @@ class WorkplaceInsightEngine:
             merged.get("relationships", []),
             merged.get("risks", []),
             merged.get("hidden_hypotheses", []),
+            (merged.get("work_graph") or {}).get("nodes", []),
+            (merged.get("work_graph") or {}).get("edges", []),
         )
         return merged
