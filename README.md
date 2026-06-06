@@ -2,55 +2,142 @@
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-**Paste messy workplace context. Get an evidence-grounded relationship graph.**
+**Paste messy workplace context. Get an evidence-grounded people, work, risk, and memory map.**
 
-WorkplaceThinker is a workplace relationship and risk insight agent built on top
-of DocThinker's agentic memory foundation. It is designed for people who are new
-to a team, new to work, or stuck in a confusing collaboration: paste chats,
-meeting notes, org lines, project context, or uploaded text, and WorkplaceThinker
-turns the situation into a graph of people, collaboration signals, risks,
-hidden hypotheses, evidence, and safe next questions.
+WorkplaceThinker is a workplace context intelligence agent built on top of
+DocThinker's agentic memory foundation. It is designed for people who are new to
+work, new to a team, or stuck in a confusing collaboration. Paste chats, meeting
+notes, org lines, project context, or uploaded text; WorkplaceThinker turns the
+mess into auditable workplace maps:
 
-It does **not** claim to read minds. It separates observed facts from hypotheses,
-requires evidence for claims, and suggests neutral confirmation questions instead
-of encouraging suspicion or workplace politics.
+- a **people network**: who reports to whom, who supports, blocks, commits, or changes stance;
+- a **work network**: projects, tasks, decisions, owners, approvals, deliverables, deadlines, and acceptance signals;
+- a **person profile explorer**: a Tianyancha-style directory for people mentioned in the case;
+- a **risk and hypothesis graph**: evidence-backed risks and clearly marked hypotheses;
+- a **knowledge-injected reasoning layer**: RACI, decision records, boundary setting, inference discipline, and internet-workplace jargon semantics.
 
-## What It Does
-
-- **One-box input**: paste all information directly. No structured payload needed.
-- **Relationship graph**: see people, reporting lines, support, collaboration,
-  challenge, commitment, risk signals, and hidden hypotheses.
-- **Evidence-first reasoning**: every risk or hypothesis points back to evidence ids.
-- **Harness architecture**: input, reasoning, graph, and control are packaged as
-  one product-facing interface.
-- **User control**: verify, reject, promote confirmed facts, or exclude sensitive
-  context from memory.
-- **Agentic Memory System**: remembers people, patterns, and relationships over time.
-- **Continuous Graph Building**: incrementally updates the relationship graph instead of rebuilding from scratch every time.
-- **Timeline View**: see how relationships and risks evolve over time.
+It is not a mind reader. It separates observed facts, behavior signals, risks,
+and hypotheses. It keeps evidence ids attached to claims and pushes the user
+toward neutral confirmation, written clarity, and safer next questions.
 
 ## Why This Exists
 
 Early-career employees often lack the informal context that experienced people
 take for granted:
 
-- Who actually owns a task?
+- Who is the real owner?
 - Is this a formal decision or a private side-channel?
 - Is someone changing commitments?
-- Could I be carrying responsibility without authority?
+- Am I carrying responsibility without authority?
 - What should I confirm in writing?
+- What does "align", "close the loop", "owner", "push", or "blocker" actually imply in this conversation?
 
 WorkplaceThinker turns vague anxiety into a structured, evidence-backed view:
 
 ```text
-raw workplace context
-  -> evidence ids
+messy workplace context
+  -> stable evidence ids
   -> people + org extraction
-  -> relationship and risk candidates
-  -> LLM-assisted reasoning with evidence constraints
-  -> graph + risk cards + confirmation questions
+  -> work-object extraction
+  -> relationship, risk, and jargon signals
+  -> knowledge-injected reasoning
+  -> graph + person dossiers + questions + controls
   -> user verification and memory control
 ```
+
+## Core Capabilities
+
+### One-Box Input
+
+Paste a raw bundle of chats, org lines, notes, and questions. No structured
+payload is required for the main path.
+
+### People Network
+
+WorkplaceThinker extracts people, formal reporting lines, collaboration,
+support, challenge, commitment, and risk involvement. Each relation keeps the
+evidence ids that caused it to appear.
+
+### Work Network
+
+The system now models work content explicitly. It can identify work objects such
+as:
+
+- `project`
+- `task`
+- `decision`
+- `approval`
+- `deliverable`
+- `deadline`
+- `acceptance`
+
+It also links people to work through signals like owner, approval, validation,
+deadline pressure, and dependency.
+
+### Person Profile Explorer
+
+The demo includes a **People Profiles** tab. It works like a lightweight
+workplace dossier directory:
+
+1. Open the People Profiles tab.
+2. See everyone detected in the case.
+3. Click a person.
+4. Inspect that person's related relationships, risks, behavior observations,
+   work links, jargon signals, evidence snippets, and historical analysis.
+
+The profile is evidence-based. It does **not** label someone's personality. It
+records observable interaction patterns only.
+
+### Knowledge Injection
+
+WorkplaceThinker includes an explicit workplace knowledge layer in
+`workplace_thinker/knowledge_injection.py`. It injects frames such as:
+
+- **RACI responsibility clarification**: responsible, accountable, consulted, informed;
+- **Decision records**: private decisions and process exceptions should become auditable;
+- **Boundary setting**: convert pressure into scope, resources, priority, and trade-offs;
+- **Ladder of inference**: separate observation, interpretation, hypothesis, and action.
+
+This keeps the product from relying only on keyword matching or unconstrained LLM
+interpretation.
+
+### Internet Workplace Jargon Semantics
+
+The knowledge layer also understands common workplace/internet-business terms:
+
+- align / 对齐 / 拉齐 / 口径一致
+- close the loop / 闭环
+- owner / 主责 / 牵头 / 兜底
+- push / 推进 / 盯一下
+- breakdown / 拆解 / 颗粒度
+- schedule / 排期 / 上线 / 提测 / 联调
+- blocker / 卡点 / 阻塞
+- review / 复盘 / 沉淀
+- leverage / 抓手 / 赋能 / 打法 / 链路
+
+These terms are returned as `jargon_signals` with the matched terms, normalized
+meaning, mapped workplace concepts, interpretation, and safe confirmation
+questions.
+
+### Evidence-First Risks and Hypotheses
+
+Risk categories include:
+
+- ownership ambiguity
+- information asymmetry
+- process bypass
+- credit/blame risk
+- power pressure
+- stance volatility
+
+Hidden hypotheses are first-class graph nodes and always marked with
+`status = hypothesis_not_fact`.
+
+### Memory and Timeline
+
+With memory enabled, the harness tracks people, recurring patterns,
+relationships, graph snapshots, and user feedback across turns. Users can export,
+import, clear, or inspect memory through the harness/API.
 
 ## Demo
 
@@ -66,9 +153,13 @@ Open:
 http://127.0.0.1:8010
 ```
 
-The demo UI lets you paste one information bundle and returns a graph. Risk
-signals are graph nodes, hidden hypotheses are graph nodes, and the side panel
-shows evidence-backed risks plus user control actions.
+The demo UI provides two main views:
+
+- **Analysis Overview**: graph, risks, hidden hypotheses, work network, knowledge frames, and suggested questions.
+- **People Profiles**: a directory of detected people, with click-through dossiers for each person.
+
+If you open `apps/workplace_radar.html` directly as a file, it can still show the
+built-in fallback demo. To analyze live input, run the API server above.
 
 ## Quick API Example
 
@@ -84,10 +175,12 @@ payload = {
     组织架构：王强 - 部门经理 - Platform 团队
     组织架构：李娜 - 资深同事 - Product 团队 - 汇报王强
 
-    张伟说这个需求先做，不用审批，后面再补流程。
+    张伟说这个需求先对齐口径，周五上线，先不用审批，后面我来闭环。
     李娜提醒我，王强之前答应负责验收，但现在又改口说不是他负责。
     张伟和王强私下沟通过，没有同步到项目群。
     """,
+    "use_memory": True,
+    "save_to_memory": True,
 }
 
 result = httpx.post(
@@ -96,8 +189,9 @@ result = httpx.post(
 ).json()
 
 print(result["summary"])
-print(result["graph"]["nodes"])
-print(result["control_manifest"]["actions"])
+print(result["person_histories"].keys())
+print(result["work_graph"]["summary"])
+print(result["jargon_signals"])
 ```
 
 Structured integrations can call:
@@ -113,11 +207,19 @@ The recommended integration surface is `WorkplaceInsightHarness`.
 ```python
 from workplace_thinker import WorkplaceInsightHarness
 
-harness = WorkplaceInsightHarness()
+harness = WorkplaceInsightHarness(
+    session_id="my_workplace_journey",
+    enable_memory=True,
+)
+
 result = await harness.analyze_information(
     information="组织架构：张伟 - 产品负责人 - 汇报王强\n张伟说先做，不用审批，后补流程。",
     question="有什么隐藏风险？",
+    use_memory=True,
+    save_to_memory=True,
 )
+
+print(result["person_histories"]["张伟"])
 ```
 
 The harness wraps four layers:
@@ -129,79 +231,55 @@ The harness wraps four layers:
 | `GraphHarness` | Returns graph legend, focus nodes, graph statistics, and default view hints. |
 | `ControlHarness` | Returns safe user actions: verify, reject, promote, exclude, and memory policy controls. |
 
-## Memory System Usage
+## Response Shape
 
-Enable the memory system to continuously build the relationship graph:
-
-```python
-from workplace_thinker import WorkplaceInsightHarness
-
-# Enable memory system (same session_id preserves history)
-harness = WorkplaceInsightHarness(
-    session_id="my_workplace_journey",
-    enable_memory=True
-)
-
-# Day 1: Understand the team
-result1 = await harness.analyze_information(
-    information="Org: Zhang Wei - Product Lead - reports to Wang Qiang\nZhang Wei says do this first, no approval needed, we'll fill the process later.",
-    question="What should I watch for on my first day?"
-)
-
-# View the current graph from memory
-current_graph = harness.get_current_graph()
-print(current_graph["nodes"])
-
-# Day 2: Encounter issues (memory reuses previous info)
-result2 = await harness.analyze_information(
-    information="Li Na privately said Zhang Wei did this before and the new hire took the blame.",
-    question="What should I do now?"
-)
-
-# View graph evolution timeline
-timeline = harness.get_graph_timeline()
-print(timeline)
-```
-
-## Memory System API
-
-```python
-# Get memory stats
-stats = harness.get_memory_stats()
-
-# Get person profile
-profile = harness.get_person_profile("Zhang Wei")
-
-# Export memory (includes graph data)
-memory_data = harness.export_memory()
-
-# Import memory
-harness.import_memory(memory_data)
-
-# Get relationship history between two people
-history = harness.get_relationship_history("Zhang Wei", "Wang Qiang")
-```
-
-The response includes:
+A typical response includes:
 
 ```text
 summary
 graph
 graph_view
+people
+person_histories
+work_graph
+relationships
 risks
 hidden_hypotheses
+behavior_observations
+jargon_signals
+knowledge_context
 recommended_questions
 evidence
+uncertainty_checklist
+multiple_hypotheses
+prioritized_results
+action_scripts
+temporal_analysis
 control_manifest
+persistent_graph
+graph_timeline
+memory_stats
 harness
 meta
 ```
+
+Important fields:
+
+| Field | Meaning |
+| --- | --- |
+| `person_histories` | Per-person dossier with current evidence, risks, relations, work links, jargon signals, memory profile, and historical summaries. |
+| `work_graph` | Work-object nodes and person-to-work edges. |
+| `behavior_observations` | Evidence-backed behavior signals, explicitly not personality labels. |
+| `jargon_signals` | Matched workplace jargon with normalized meanings and safe confirmation questions. |
+| `knowledge_context` | Active workplace reasoning frames and guardrails injected into analysis. |
+| `control_manifest` | User-safe controls and memory policy. |
 
 ## Graph Semantics
 
 Nodes:
 
 - `person`
+- `work_object`
 - `risk_signal`
 - `hidden_hypothesis`
 
@@ -212,18 +290,62 @@ Edges:
 - `supports`
 - `blocks_or_challenges`
 - `commits_to`
+- `owns_work`
+- `approves_work`
+- `validates_work`
+- `sets_deadline`
+- `depends_on`
 - `mentions_risk`
 - `supports_hypothesis`
 
 Visual language:
 
 - circle = person
+- hexagon = work object
 - rounded square = risk signal
 - diamond = hidden hypothesis
 - blue edge = formal organization line
 - sage edge = support or collaboration
+- ochre edge = work ownership / approval / deadline
 - copper dashed edge = risk signal
 - plum dotted edge = hypothesis support
+
+## Memory System API
+
+```python
+# Get memory stats
+stats = harness.get_memory_stats()
+
+# Get person profile
+profile = harness.get_person_profile("Zhang Wei")
+
+# Export memory, including graph data
+memory_data = harness.export_memory()
+
+# Import memory
+harness.import_memory(memory_data)
+
+# Get relationship history between two people
+history = harness.get_relationship_history("Zhang Wei", "Wang Qiang")
+
+# Clear current session memory
+harness.clear_session_memory()
+```
+
+The API also exposes:
+
+```text
+GET    /api/v1/memory/sessions
+GET    /api/v1/memory/stats/{session_id}
+GET    /api/v1/memory/profile/{session_id}/{person_name}
+POST   /api/v1/memory/export
+POST   /api/v1/memory/import
+POST   /api/v1/memory/clear/{session_id}
+DELETE /api/v1/memory/session/{session_id}
+POST   /api/v1/workplace/feedback
+GET    /api/v1/conversation/suggest/{session_id}
+GET    /api/v1/conversation/summary/{session_id}
+```
 
 ## Safety Principle
 
@@ -233,9 +355,33 @@ Rules:
 
 - No evidence, no claim.
 - Hypotheses are not facts.
-- Analogy and induction can suggest what to check, not what to believe.
+- Behavior observations are not personality judgments.
+- Historical memory can suggest what to check, not what to believe.
+- Internet workplace jargon is interpreted as a semantic signal, not as proof.
 - Advice should favor neutral confirmation, written clarity, and boundary setting.
-- Sensitive context should be user-controlled and excludable from memory.
+- Sensitive context should be user-controlled, excludable, and deletable.
+
+## Validation
+
+Current focused validation:
+
+```bash
+python3 -m unittest tests.test_workplace_insights -v
+python3 -m py_compile workplace_thinker/knowledge_injection.py workplace_thinker/insights.py workplace_thinker/harness.py workplace_thinker/api.py
+```
+
+For the standalone HTML demo script:
+
+```bash
+python3 - <<'PY' > /tmp/workplace_radar_script.js
+from pathlib import Path
+text = Path('apps/workplace_radar.html').read_text()
+start = text.index('<script>') + len('<script>')
+end = text.index('</script>', start)
+print(text[start:end])
+PY
+node --check /tmp/workplace_radar_script.js
+```
 
 ## Docs
 
@@ -245,11 +391,12 @@ Rules:
 
 ## Roadmap
 
-- Deductive, inductive, and analogical reasoning traces.
-- Memory-backed similar case retrieval.
-- User correction loop for confirmed/false hypotheses.
-- Better graph interaction: evidence hover, filter by risk type, timeline mode.
-- Optional private local storage for workplace cases.
+- Stronger work-graph extraction for owner / approver / reviewer / dependency / deadline.
+- Evidence hover and graph filtering in the UI.
+- Better person-profile timeline and case history search.
+- User correction flow for confirmed or false hypotheses.
+- Private local storage mode for sensitive workplace cases.
+- More workplace knowledge packs for onboarding, project delivery, performance review, and cross-team collaboration.
 
 ## Relationship To DocThinker
 
