@@ -328,6 +328,7 @@ class WorkplaceInsightHarness:
         risks = result.get("risks") or []
         behaviors = result.get("behavior_observations") or []
         jargon_signals = result.get("jargon_signals") or []
+        org_dynamics_signals = result.get("org_dynamics_signals") or []
         evidence_items = result.get("evidence") or []
         work_graph = result.get("work_graph") or {}
         work_edges = work_graph.get("edges") or []
@@ -360,9 +361,13 @@ class WorkplaceInsightHarness:
                 item for item in jargon_signals
                 if name in [str(p) for p in item.get("people", []) or []]
             ]
+            related_org_dynamics = [
+                item for item in org_dynamics_signals
+                if name in [str(p) for p in item.get("people", []) or []]
+            ]
 
             evidence_ids: List[str] = []
-            for collection in (related_relationships, related_risks, related_behaviors, related_work_edges, related_jargon):
+            for collection in (related_relationships, related_risks, related_behaviors, related_work_edges, related_jargon, related_org_dynamics):
                 for item in collection:
                     evidence_ids.extend(str(eid) for eid in item.get("evidence_ids", []) or [])
             evidence_ids.extend(str(eid) for eid in person.get("evidence_ids", []) or [])
@@ -410,6 +415,7 @@ class WorkplaceInsightHarness:
                     "behavior_observations": related_behaviors,
                     "work_edges": related_work_edges,
                     "jargon_signals": related_jargon,
+                    "org_dynamics_signals": related_org_dynamics,
                     "evidence": [evidence_by_id[eid] for eid in evidence_ids if eid in evidence_by_id],
                 },
                 "history": historical_summaries[-10:],

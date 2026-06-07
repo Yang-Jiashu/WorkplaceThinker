@@ -34,6 +34,7 @@ from .knowledge_injection import (
     build_prompt_section,
     infer_behavior_observations,
     match_jargon_terms,
+    match_org_dynamics,
     match_work_objects,
     match_work_relations,
 )
@@ -419,6 +420,7 @@ class WorkplaceInsightEngine:
         work_item_map: Dict[str, Dict[str, Any]] = {}
         work_edge_map: Dict[tuple[str, str, str], Dict[str, Any]] = {}
         jargon_signal_map: Dict[tuple[str, str], Dict[str, Any]] = {}
+        org_dynamics_signal_map: Dict[tuple[str, str], Dict[str, Any]] = {}
 
         for item in evidence:
             names = extract_people(item.text, org_names)
@@ -426,6 +428,7 @@ class WorkplaceInsightEngine:
             work_matches = match_work_objects(item.text)
             work_relations = match_work_relations(item.text)
             jargon_matches = match_jargon_terms(item.text)
+            org_dynamics_matches = match_org_dynamics(item.text)
             for name in names:
                 people_mentions[name] += 1
                 people_evidence[name].append(item.id)
@@ -510,6 +513,26 @@ class WorkplaceInsightEngine:
                 signal["terms"] = list(dict.fromkeys(signal["terms"] + match["terms"]))
                 signal["evidence_ids"].append(item.id)
 
+            for match in org_dynamics_matches:
+                dynamics_key = (match["category"], item.id)
+                signal = org_dynamics_signal_map.setdefault(
+                    dynamics_key,
+                    {
+                        "id": stable_id("orgd", "|".join(dynamics_key)),
+                        "category": match["category"],
+                        "label": match["label"],
+                        "terms": [],
+                        "maps_to": match["maps_to"],
+                        "interpretation": match["interpretation"],
+                        "safe_question": match["safe_question"],
+                        "people": names,
+                        "evidence_ids": [],
+                        "status": "organizational_dynamics_signal_not_fact",
+                    },
+                )
+                signal["terms"] = list(dict.fromkeys(signal["terms"] + match["terms"]))
+                signal["evidence_ids"].append(item.id)
+
             for category, rule in RISK_TAXONOMY.items():
                 if not contains_any(item.text, rule["keywords"]):
                     continue
@@ -573,6 +596,7 @@ class WorkplaceInsightEngine:
         work_items = sorted(work_item_map.values(), key=lambda n: (n["category"], n["id"]))[:40]
         work_relationships = sorted(work_edge_map.values(), key=lambda e: (-float(e["score"]), e["label"]))[:80]
         jargon_signals = sorted(jargon_signal_map.values(), key=lambda s: (s["category"], s["id"]))[:40]
+        org_dynamics_signals = sorted(org_dynamics_signal_map.values(), key=lambda s: (s["category"], s["id"]))[:40]
         risks = sorted(risks, key=lambda r: (-float(r["severity"]), -float(r["confidence"])))[:20]
         hypotheses = self._build_hypotheses(risk_counts, edges, risks)
         person_nodes = nodes
@@ -590,7 +614,7 @@ class WorkplaceInsightEngine:
         for p_node in person_nodes:
             p_node["behavioral_style"] = detect_behavioral_style(p_node["label"], risks, edges)
         behavior_observations = infer_behavior_observations(person_nodes, edges, risks)
-        knowledge_context = build_knowledge_context(risks, work_items, behavior_observations, jargon_signals)
+        knowledge_context = build_knowledge_context(risks, work_items, behavior_observations, jargon_signals, org_dynamics_signals)
         
         # P0 改进 1: 结果分级
         prioritized = self._prioritize_results(risks, hypotheses, [])
@@ -616,6 +640,7 @@ class WorkplaceInsightEngine:
             "hidden_hypotheses": hypotheses,
             "behavior_observations": behavior_observations,
             "jargon_signals": jargon_signals,
+            "org_dynamics_signals": org_dynamics_signals,
             "knowledge_context": knowledge_context,
             "recommended_questions": self._recommended_questions(risk_counts, risks),
             "evidence": [item.__dict__ for item in evidence],
@@ -635,6 +660,7 @@ class WorkplaceInsightEngine:
                 "work_object_count": len(work_items),
                 "behavior_observation_count": len(behavior_observations),
                 "jargon_signal_count": len(jargon_signals),
+                "org_dynamics_signal_count": len(org_dynamics_signals),
                 "knowledge_frame_count": len(knowledge_context.get("active_frames", [])),
             },
         }
@@ -1079,7 +1105,7 @@ class WorkplaceInsightEngine:
 {knowledge_section}
 
 当前规则抽取结果摘要：
-{json.dumps({"summary": base.get("summary"), "risks": base.get("risks", [])[:8], "relationships": base.get("relationships", [])[:10], "work_graph": base.get("work_graph", {}), "behavior_observations": base.get("behavior_observations", [])[:8], "jargon_signals": base.get("jargon_signals", [])[:12]}, ensure_ascii=False)}
+{json.dumps({"summary": base.get("summary"), "risks": base.get("risks", [])[:8], "relationships": base.get("relationships", [])[:10], "work_graph": base.get("work_graph", {}), "behavior_observations": base.get("behavior_observations", [])[:8], "jargon_signals": base.get("jargon_signals", [])[:12], "org_dynamics_signals": base.get("org_dynamics_signals", [])[:12]}, ensure_ascii=False)}
 
 请输出 JSON：
 {{

@@ -14,7 +14,7 @@ mess into auditable workplace maps:
 - a **work network**: projects, tasks, decisions, owners, approvals, deliverables, deadlines, and acceptance signals;
 - a **person profile explorer**: a Tianyancha-style directory for people mentioned in the case;
 - a **risk and hypothesis graph**: evidence-backed risks and clearly marked hypotheses;
-- a **knowledge-injected reasoning layer**: RACI, decision records, boundary setting, inference discipline, and internet-workplace jargon semantics.
+- a **knowledge-injected reasoning layer**: RACI, decision records, boundary setting, inference discipline, internet-workplace jargon semantics, and organizational dynamics.
 
 It is not a mind reader. It separates observed facts, behavior signals, risks,
 and hypotheses. It keeps evidence ids attached to claims and pushes the user
@@ -118,6 +118,25 @@ The knowledge layer also understands common workplace/internet-business terms:
 These terms are returned as `jargon_signals` with the matched terms, normalized
 meaning, mapped workplace concepts, interpretation, and safe confirmation
 questions.
+
+### Organizational Dynamics
+
+WorkplaceThinker can also detect evidence-backed organizational dynamics, such
+as:
+
+- information gatekeeping;
+- shadow decision chains;
+- sponsorship and backing;
+- credit capture;
+- blame shifting;
+- resource control;
+- coalition signals;
+- performance pressure transfer.
+
+These are returned as `org_dynamics_signals`. They are **signals, not facts**.
+The system uses them to ask safer questions about authority, information flow,
+resources, credit, and accountability. It does not provide manipulation,
+factional, or attack advice.
 
 ### Evidence-First Risks and Hypotheses
 
@@ -247,6 +266,7 @@ risks
 hidden_hypotheses
 behavior_observations
 jargon_signals
+org_dynamics_signals
 knowledge_context
 recommended_questions
 evidence
@@ -271,6 +291,7 @@ Important fields:
 | `work_graph` | Work-object nodes and person-to-work edges. |
 | `behavior_observations` | Evidence-backed behavior signals, explicitly not personality labels. |
 | `jargon_signals` | Matched workplace jargon with normalized meanings and safe confirmation questions. |
+| `org_dynamics_signals` | Organizational dynamics signals such as information gatekeeping, shadow decisions, sponsorship, blame shifting, or resource control. |
 | `knowledge_context` | Active workplace reasoning frames and guardrails injected into analysis. |
 | `control_manifest` | User-safe controls and memory policy. |
 
@@ -358,6 +379,7 @@ Rules:
 - Behavior observations are not personality judgments.
 - Historical memory can suggest what to check, not what to believe.
 - Internet workplace jargon is interpreted as a semantic signal, not as proof.
+- Organizational dynamics are treated as verifiable power / information / resource signals, not as conspiracy or personality claims.
 - Advice should favor neutral confirmation, written clarity, and boundary setting.
 - Sensitive context should be user-controlled, excludable, and deletable.
 

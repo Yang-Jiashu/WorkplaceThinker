@@ -103,6 +103,7 @@ class WorkplaceInsightHarnessTest(unittest.IsolatedAsyncioTestCase):
             李娜提醒我，王强之前答应负责验收，但现在又改口说不是他负责。
             张伟说这个需求周五必须上线，先不用审批，验收后面再补，大家先对齐口径。
             王强说张伟负责方案，我负责文档和上线检查，后面我来闭环。
+            张伟和王强私下沟通，说老板已经点头，先别在群里公开。
             """,
             question="工作内容和关系怎么拆？",
         )
@@ -118,8 +119,12 @@ class WorkplaceInsightHarnessTest(unittest.IsolatedAsyncioTestCase):
         jargon_categories = {item["category"] for item in result["jargon_signals"]}
         self.assertTrue({"alignment", "closure", "ownership", "schedule"} & jargon_categories)
         self.assertTrue(result["knowledge_context"]["jargon_coverage"])
+        self.assertGreaterEqual(result["meta"]["org_dynamics_signal_count"], 1)
+        self.assertTrue(result["org_dynamics_signals"])
+        self.assertTrue(all(s["status"] == "organizational_dynamics_signal_not_fact" for s in result["org_dynamics_signals"]))
+        self.assertTrue(result["knowledge_context"]["org_dynamics_coverage"])
         frame_ids = {frame["id"] for frame in result["knowledge_context"]["active_frames"]}
-        self.assertTrue({"raci", "decision_record", "boundary_setting"} & frame_ids)
+        self.assertTrue({"raci", "decision_record", "boundary_setting", "organizational_dynamics"} & frame_ids)
 
 
 class WorkplaceInsightAPITest(unittest.TestCase):

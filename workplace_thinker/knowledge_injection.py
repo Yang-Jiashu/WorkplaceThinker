@@ -146,6 +146,66 @@ INTERNET_WORKPLACE_JARGON: Dict[str, Dict[str, Any]] = {
 }
 
 
+ORG_DYNAMICS_TAXONOMY: Dict[str, Dict[str, Any]] = {
+    "information_gatekeeping": {
+        "label": "信息门控",
+        "keywords": ["只告诉", "没同步", "私下", "单独找", "不让群里说", "别公开", "小范围", "信息不透明"],
+        "maps_to": ["information_flow", "power_by_context"],
+        "interpretation": "关键信息只在小范围流动时，信息入口本身可能成为影响力来源；这不是阴谋结论，只提示需要补齐公开信息流。",
+        "safe_question": "哪些人必须被同步？我可以把当前结论发到共同频道确认吗？",
+    },
+    "shadow_decision_chain": {
+        "label": "影子决策链",
+        "keywords": ["私下沟通", "老板已经知道", "上面定了", "先别问", "不用审批", "后面补流程", "口头定了"],
+        "maps_to": ["decision_record", "authorization"],
+        "interpretation": "正式流程之外出现决策信号时，需要确认授权人、记录位置和例外条件。",
+        "safe_question": "这个结论是否已有明确授权人？我应该在哪里补一条可追溯记录？",
+    },
+    "sponsorship_and_backing": {
+        "label": "背书 / 保护伞",
+        "keywords": ["老板支持", "领导支持", "有背书", "他罩着", "高层认可", "老板拍板", "老板点头"],
+        "maps_to": ["sponsorship", "authority"],
+        "interpretation": "背书会改变推进阻力和风险承担方式；需要区分口头支持、正式授权和资源承诺。",
+        "safe_question": "这个背书是否可以转成明确授权、资源或优先级说明？",
+    },
+    "credit_capture": {
+        "label": "功劳上收",
+        "keywords": ["汇报功劳", "抢功", "包装成果", "对上汇报", "算他的", "他拿去讲", "成果归"],
+        "maps_to": ["credit_visibility", "accountability"],
+        "interpretation": "贡献展示和对上汇报可能影响信用分配；需要用阶段同步让贡献和决策过程可见。",
+        "safe_question": "我可以把阶段进展、贡献分工和待确认事项同步给相关方吗？",
+    },
+    "blame_shifting": {
+        "label": "责任下放 / 甩锅",
+        "keywords": ["背锅", "甩锅", "算你的", "不是我负责", "你自己看着办", "你兜底", "出问题你负责"],
+        "maps_to": ["blame_risk", "boundary_setting"],
+        "interpretation": "责任可能从授权者或决策者转移到执行者；需要区分执行责任、审批责任和验收责任。",
+        "safe_question": "我负责执行哪一部分？审批、验收和最终结果责任分别是谁？",
+    },
+    "resource_control": {
+        "label": "资源控制",
+        "keywords": ["不给资源", "没权限", "预算", "人手", "排期不给", "资源卡住", "权限卡住", "要他点头"],
+        "maps_to": ["resource_dependency", "power_by_resources"],
+        "interpretation": "资源、权限和排期控制会影响谁实际拥有推进权；需要把依赖条件公开化。",
+        "safe_question": "当前缺的是权限、人手、预算、排期，还是某个负责人的确认？",
+    },
+    "coalition_signal": {
+        "label": "联盟 / 派系信号",
+        "keywords": ["他们一边", "站队", "派系", "圈子", "自己人", "老同事", "私下串过", "一起说"],
+        "maps_to": ["coalition", "relationship_context"],
+        "interpretation": "多人一致口径可能只是正常协作，也可能说明存在小圈层信息流；只能作为待验证的关系背景。",
+        "safe_question": "这个结论是团队公开共识，还是部分人先沟通过的口径？",
+    },
+    "performance_pressure_transfer": {
+        "label": "绩效压力转嫁",
+        "keywords": ["影响绩效", "KPI", "考核", "老板会看", "必须上线", "不然不好看", "影响评价"],
+        "maps_to": ["performance_pressure", "boundary_setting"],
+        "interpretation": "绩效语言会把组织压力传导给执行者；需要把压力转成范围、资源、优先级和风险接受人。",
+        "safe_question": "如果这是绩效优先级，哪些范围可以调整？风险由谁确认接受？",
+    },
+}
+
+
 BEHAVIOR_SIGNAL_TAXONOMY: Dict[str, Dict[str, Any]] = {
     "supportive_risk_awareness": {
         "label": "风险提醒 / 支持倾向",
@@ -211,6 +271,12 @@ KNOWLEDGE_FRAMES: Dict[str, Dict[str, Any]] = {
         "principle": "先区分观察事实、解释、假设和行动，不把一次互动上升为人格定性。",
         "safe_question": "我现在掌握的是哪些事实，哪些只是可能解释？还缺哪条证据？",
     },
+    "organizational_dynamics": {
+        "label": "组织政治 / 权力动态",
+        "trigger_risks": ["information_asymmetry", "process_bypass", "credit_blame", "power_pressure"],
+        "principle": "观察信息、资源、授权、信用和责任如何流动；只做可验证的组织动态判断，不做阴谋论或人格定性。",
+        "safe_question": "这件事的信息入口、授权人、资源控制人、验收人和风险承担人分别是谁？",
+    },
 }
 
 
@@ -219,6 +285,7 @@ GUARDRAILS = [
     "关系强弱、偏好和风险必须关联证据或用户确认。",
     "历史记忆只能提示值得检查的模式，不能直接当作当前事实。",
     "建议优先落到中性确认、同步、留痕、边界澄清。",
+    "组织政治只能作为可验证的权力/信息/资源动态，不输出操纵、站队或攻击建议。",
 ]
 
 
@@ -259,6 +326,25 @@ def match_jargon_terms(text: str) -> List[Dict[str, Any]]:
     matches: List[Dict[str, Any]] = []
     for category, spec in INTERNET_WORKPLACE_JARGON.items():
         hit_terms = [term for term in spec["terms"] if term in str(text or "")]
+        if not hit_terms:
+            continue
+        matches.append(
+            {
+                "category": category,
+                "label": spec["label"],
+                "terms": hit_terms,
+                "maps_to": spec["maps_to"],
+                "interpretation": spec["interpretation"],
+                "safe_question": spec["safe_question"],
+            }
+        )
+    return matches
+
+
+def match_org_dynamics(text: str) -> List[Dict[str, Any]]:
+    matches: List[Dict[str, Any]] = []
+    for category, spec in ORG_DYNAMICS_TAXONOMY.items():
+        hit_terms = [term for term in spec["keywords"] if term in str(text or "")]
         if not hit_terms:
             continue
         matches.append(
@@ -339,6 +425,7 @@ def build_knowledge_context(
     work_items: Sequence[Dict[str, Any]],
     behavior_observations: Sequence[Dict[str, Any]],
     jargon_signals: Sequence[Dict[str, Any]] = (),
+    org_dynamics_signals: Sequence[Dict[str, Any]] = (),
 ) -> Dict[str, Any]:
     risk_categories = {str(r.get("category") or "") for r in risks}
     active_frames: List[Dict[str, Any]] = []
@@ -357,6 +444,7 @@ def build_knowledge_context(
     work_categories = Counter(str(item.get("category") or "") for item in work_items)
     behavior_signals = Counter(str(item.get("signal") or "") for item in behavior_observations)
     jargon_categories = Counter(str(item.get("category") or "") for item in jargon_signals)
+    org_dynamics_categories = Counter(str(item.get("category") or "") for item in org_dynamics_signals)
 
     return {
         "source": "built_in_workplace_knowledge_v1",
@@ -365,6 +453,7 @@ def build_knowledge_context(
         "work_object_coverage": dict(work_categories),
         "behavior_signal_coverage": dict(behavior_signals),
         "jargon_coverage": dict(jargon_categories),
+        "org_dynamics_coverage": dict(org_dynamics_categories),
         "guardrails": GUARDRAILS,
     }
 
@@ -381,12 +470,17 @@ def build_prompt_section(knowledge_context: Dict[str, Any]) -> str:
     guardrails = "\n".join(f"- {g}" for g in knowledge_context.get("guardrails", GUARDRAILS))
     jargon = knowledge_context.get("jargon_coverage") or {}
     jargon_text = "、".join(f"{key}={count}" for key, count in jargon.items()) or "暂无"
+    org_dynamics = knowledge_context.get("org_dynamics_coverage") or {}
+    org_dynamics_text = "、".join(f"{key}={count}" for key, count in org_dynamics.items()) or "暂无"
     return f"""
 职场知识注入：
 {frames_text}
 
 互联网职场语义信号：
 - {jargon_text}
+
+组织政治 / 权力动态信号：
+- {org_dynamics_text}
 
 行为画像边界：
 {guardrails}

@@ -190,6 +190,8 @@
         <div id="behavior"></div>
         <h3>互联网语义</h3>
         <div id="jargon"></div>
+        <h3>组织动态</h3>
+        <div id="org-dynamics"></div>
         <h3>知识框架</h3>
         <div id="knowledge"></div>
         <h3>建议确认问题</h3>
@@ -295,6 +297,7 @@
       renderWork(data.work_graph || {});
       renderBehavior(data.behavior_observations || []);
       renderJargon(data.jargon_signals || []);
+      renderOrgDynamics(data.org_dynamics_signals || []);
       renderKnowledge(data.knowledge_context || {});
       document.getElementById('questions').innerHTML = (data.recommended_questions || []).map(q => `<div class="card"><p>${escapeHtml(q)}</p></div>`).join('');
       document.getElementById('actions').innerHTML = ((data.control_manifest || {}).actions || []).map(a => `
@@ -339,6 +342,7 @@
           behavior_observations: (data.behavior_observations || []).filter(b => b.person === name),
           work_edges: (data.work_graph?.edges || []).filter(e => e.source_name === name),
           jargon_signals: (data.jargon_signals || []).filter(j => (j.people || []).includes(name)),
+          org_dynamics_signals: (data.org_dynamics_signals || []).filter(s => (s.people || []).includes(name)),
           evidence: [],
         },
         history: [],
@@ -410,6 +414,7 @@
       const behaviors = current.behavior_observations || [];
       const workEdges = current.work_edges || [];
       const jargon = current.jargon_signals || [];
+      const orgDynamics = current.org_dynamics_signals || [];
       const evidence = current.evidence || [];
       const history = hist.history || [];
       document.getElementById('people-directory').innerHTML = `
@@ -425,6 +430,7 @@
             <span class="chip">${risks.length} 风险</span>
             <span class="chip">${behaviors.length} 行为观察</span>
             <span class="chip">${workEdges.length} 工作关联</span>
+            <span class="chip">${orgDynamics.length} 组织动态</span>
           </div>
         </div>
         ${section('相关关系', relationships.map(r => `${r.source_name || r.source} → ${r.target_name || r.target}：${r.label || r.type}`))}
@@ -432,6 +438,7 @@
         ${section('行为观察', behaviors.map(b => `${b.label}：${b.description || ''}`))}
         ${section('工作关联', workEdges.slice(0, 8).map(e => `${e.label || e.type}：${e.target_name || e.target}`))}
         ${section('互联网语义', jargon.map(j => `${j.label}：${(j.terms || []).join('、')}。${j.interpretation || ''}`))}
+        ${section('组织动态', orgDynamics.map(s => `${s.label}：${(s.terms || []).join('、')}。${s.interpretation || ''}`))}
         ${section('证据', evidence.slice(0, 8).map(e => `${e.id}: ${e.text}`))}
         ${section('过往分析', history.map(h => `${formatTime(h.timestamp)}：${h.summary || ''}`))}
       `;
@@ -484,6 +491,17 @@
         <div class="card">
           <strong>${escapeHtml(item.label || item.category || '')}</strong>
           <p>${escapeHtml(item.interpretation || '')}</p>
+          ${(item.terms || []).map(term => `<span class="chip">${escapeHtml(term)}</span>`).join('')}
+        </div>
+      `).join('') || '<p class="small">暂无。</p>';
+    }
+
+    function renderOrgDynamics(items) {
+      document.getElementById('org-dynamics').innerHTML = items.slice(0, 8).map(item => `
+        <div class="card">
+          <strong>${escapeHtml(item.label || item.category || '')}</strong>
+          <p>${escapeHtml(item.interpretation || '')}</p>
+          <p class="small">${escapeHtml(item.safe_question || '')}</p>
           ${(item.terms || []).map(term => `<span class="chip">${escapeHtml(term)}</span>`).join('')}
         </div>
       `).join('') || '<p class="small">暂无。</p>';
