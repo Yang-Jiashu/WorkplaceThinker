@@ -267,6 +267,11 @@ hidden_hypotheses
 behavior_observations
 jargon_signals
 org_dynamics_signals
+org_dynamics_patterns
+responsibility_chain
+decision_trail
+resource_map
+evidence_event_summary
 knowledge_context
 recommended_questions
 evidence
@@ -292,6 +297,11 @@ Important fields:
 | `behavior_observations` | Evidence-backed behavior signals, explicitly not personality labels. |
 | `jargon_signals` | Matched workplace jargon with normalized meanings and safe confirmation questions. |
 | `org_dynamics_signals` | Organizational dynamics signals such as information gatekeeping, shadow decisions, sponsorship, blame shifting, or resource control. |
+| `org_dynamics_patterns` | Conservative long-horizon pattern candidates consolidated from repeated organizational dynamics signals. |
+| `responsibility_chain` | Observed or hypothesized flows of execution, approval, acceptance, credit, blame, pressure, and risk. |
+| `decision_trail` | Formal decisions, approvals, side-channel decisions, and process exceptions that need traceable records. |
+| `resource_map` | Resource, dependency, priority, permission, and performance-pressure control signals. |
+| `evidence_event_summary` | Evidence metadata summary by visibility, channel, directness, speaker, and sensitivity. |
 | `knowledge_context` | Active workplace reasoning frames and guardrails injected into analysis. |
 | `control_manifest` | User-safe controls and memory policy. |
 

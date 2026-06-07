@@ -64,6 +64,8 @@ class WorkplaceInsightHarnessTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["knowledge_context"]["active_frames"])
         self.assertTrue(result["behavior_observations"])
         self.assertTrue(all(o["status"] == "observable_pattern_not_personality" for o in result["behavior_observations"]))
+        self.assertIn("evidence_event_summary", result)
+        self.assertGreaterEqual(result["evidence_event_summary"]["total"], 1)
         self.assertIn("person_histories", result)
         self.assertIn("张伟", result["person_histories"])
         zhang_history = result["person_histories"]["张伟"]
@@ -122,6 +124,13 @@ class WorkplaceInsightHarnessTest(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(result["meta"]["org_dynamics_signal_count"], 1)
         self.assertTrue(result["org_dynamics_signals"])
         self.assertTrue(all(s["status"] == "organizational_dynamics_signal_not_fact" for s in result["org_dynamics_signals"]))
+        self.assertGreaterEqual(result["meta"]["org_dynamics_pattern_count"], 1)
+        self.assertTrue(result["org_dynamics_patterns"])
+        self.assertTrue(all(p["status"] in {"signal_cluster", "pattern_candidate"} for p in result["org_dynamics_patterns"]))
+        self.assertTrue(result["responsibility_chain"])
+        self.assertTrue(result["decision_trail"])
+        self.assertTrue(result["resource_map"])
+        self.assertGreaterEqual(result["evidence_event_summary"]["private_count"], 1)
         self.assertTrue(result["knowledge_context"]["org_dynamics_coverage"])
         frame_ids = {frame["id"] for frame in result["knowledge_context"]["active_frames"]}
         self.assertTrue({"raci", "decision_record", "boundary_setting", "organizational_dynamics"} & frame_ids)

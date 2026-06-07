@@ -192,6 +192,12 @@
         <div id="jargon"></div>
         <h3>组织动态</h3>
         <div id="org-dynamics"></div>
+        <h3>组织模式</h3>
+        <div id="org-patterns"></div>
+        <h3>责任 / 决策 / 资源链</h3>
+        <div id="political-flows"></div>
+        <h3>证据事件</h3>
+        <div id="evidence-events"></div>
         <h3>知识框架</h3>
         <div id="knowledge"></div>
         <h3>建议确认问题</h3>
@@ -251,6 +257,33 @@
           {label:"验证最高风险：流程绕过", description:"要求最小可审计记录，确认授权人和例外条件。"},
           {label:"确认或否定假设：非正式决策链", description:"隐藏假设不会当作事实进入长期记忆，除非用户确认。"}
         ]
+      },
+      org_dynamics_signals: [
+        {label:"影子决策链", category:"shadow_decision_chain", terms:["私下沟通","不用审批"], people:["张伟","王强"], interpretation:"正式流程之外出现决策信号，需要确认授权人和记录位置。", safe_question:"这个结论是否已有明确授权人？我应该在哪里补一条可追溯记录？"},
+        {label:"绩效压力转嫁", category:"performance_pressure_transfer", terms:["影响绩效","必须上线"], people:["王强"], interpretation:"绩效语言会把组织压力传导给执行者，需要把压力转成范围、资源和风险接受人。", safe_question:"如果这是绩效优先级，哪些范围可以调整？风险由谁确认接受？"}
+      ],
+      org_dynamics_patterns: [
+        {label:"影子决策链", kind:"shadow_decision_chain", actors:["张伟","王强"], recurrence_count:2, source_diversity:2, confidence:.58, status:"pattern_candidate", summary:"影子决策链出现 2 次，仍需用户确认后才能进入长期结论。", next_verification_step:"把授权人和决策记录补到可追溯渠道。"}
+      ],
+      responsibility_chain: [
+        {to_actor:"张伟", responsibility_type:"approval", label:"影子授权 / 决策链", work_object_label:"当前需求", status:"observed", safe_check:"确认执行、审批、验收和最终结果责任是否由同一人承担。"},
+        {to_actor:"王强", responsibility_type:"risk", label:"绩效压力传导", work_object_label:"周五上线", status:"hypothesized", safe_check:"把压力转成优先级、资源和取舍条件。"}
+      ],
+      decision_trail: [
+        {kind:"process_exception", label:"流程绕过", actors:["张伟"], visibility:"unclear", status:"risk_signal", safe_check:"确认是否需要补审批或书面记录。"}
+      ],
+      resource_map: [
+        {resource_type:"priority_or_performance_pressure", controllers:["王强"], status:"risk_signal", safe_check:"把压力转成优先级、资源和取舍条件。"}
+      ],
+      evidence_event_summary: {
+        total: 4,
+        by_visibility: {private: 1, public: 1, unknown: 2},
+        by_channel: {private_chat: 1, group_chat: 1, unknown: 2},
+        by_directness: {direct_observation: 3, reported: 1},
+        by_sensitivity: {medium: 2, high: 1, low: 1},
+        private_count: 1,
+        reported_or_inferred_count: 1,
+        high_sensitivity_count: 1
       }
     };
 
@@ -298,6 +331,9 @@
       renderBehavior(data.behavior_observations || []);
       renderJargon(data.jargon_signals || []);
       renderOrgDynamics(data.org_dynamics_signals || []);
+      renderOrgPatterns(data.org_dynamics_patterns || []);
+      renderPoliticalFlows(data);
+      renderEvidenceEvents(data.evidence_event_summary || {});
       renderKnowledge(data.knowledge_context || {});
       document.getElementById('questions').innerHTML = (data.recommended_questions || []).map(q => `<div class="card"><p>${escapeHtml(q)}</p></div>`).join('');
       document.getElementById('actions').innerHTML = ((data.control_manifest || {}).actions || []).map(a => `
@@ -343,6 +379,10 @@
           work_edges: (data.work_graph?.edges || []).filter(e => e.source_name === name),
           jargon_signals: (data.jargon_signals || []).filter(j => (j.people || []).includes(name)),
           org_dynamics_signals: (data.org_dynamics_signals || []).filter(s => (s.people || []).includes(name)),
+          org_dynamics_patterns: (data.org_dynamics_patterns || []).filter(p => (p.actors || []).includes(name)),
+          responsibility_chain: (data.responsibility_chain || []).filter(f => [f.from_actor, f.to_actor].includes(name)),
+          decision_trail: (data.decision_trail || []).filter(d => (d.actors || []).includes(name)),
+          resource_map: (data.resource_map || []).filter(r => (r.controllers || []).includes(name)),
           evidence: [],
         },
         history: [],
@@ -415,6 +455,10 @@
       const workEdges = current.work_edges || [];
       const jargon = current.jargon_signals || [];
       const orgDynamics = current.org_dynamics_signals || [];
+      const orgPatterns = current.org_dynamics_patterns || [];
+      const responsibility = current.responsibility_chain || [];
+      const decisions = current.decision_trail || [];
+      const resources = current.resource_map || [];
       const evidence = current.evidence || [];
       const history = hist.history || [];
       document.getElementById('people-directory').innerHTML = `
@@ -424,13 +468,14 @@
         <div class="card person-detail">
           <strong>${escapeHtml(name)} 的档案</strong>
           <p>${escapeHtml(hist.safety_note || '')}</p>
-          ${profile ? `<p class="small">长期记忆：${escapeHtml((profile.risk_signals || []).slice(0, 6).join('、') || '暂无风险模式')} ${profile.last_updated ? '· 已更新' : ''}</p>` : '<p class="small">暂无长期记忆画像。</p>'}
+          ${profile ? `<p class="small">长期观察：${escapeHtml(((profile.observed_patterns || []).length ? profile.observed_patterns : profile.risk_signals || []).slice(0, 6).join('、') || '暂无长期观察模式')} ${profile.last_updated ? '· 已更新' : ''}</p>` : '<p class="small">暂无长期观察档案。</p>'}
           <div>
             <span class="chip">${relationships.length} 关系</span>
             <span class="chip">${risks.length} 风险</span>
             <span class="chip">${behaviors.length} 行为观察</span>
             <span class="chip">${workEdges.length} 工作关联</span>
             <span class="chip">${orgDynamics.length} 组织动态</span>
+            <span class="chip">${orgPatterns.length} 长期模式</span>
           </div>
         </div>
         ${section('相关关系', relationships.map(r => `${r.source_name || r.source} → ${r.target_name || r.target}：${r.label || r.type}`))}
@@ -439,6 +484,10 @@
         ${section('工作关联', workEdges.slice(0, 8).map(e => `${e.label || e.type}：${e.target_name || e.target}`))}
         ${section('互联网语义', jargon.map(j => `${j.label}：${(j.terms || []).join('、')}。${j.interpretation || ''}`))}
         ${section('组织动态', orgDynamics.map(s => `${s.label}：${(s.terms || []).join('、')}。${s.interpretation || ''}`))}
+        ${section('组织模式', orgPatterns.map(p => `${p.label || p.kind}：${p.summary || ''}（置信度 ${Number(p.confidence || 0).toFixed(2)}）`))}
+        ${section('责任链', responsibility.map(f => `${f.to_actor || ''} · ${f.label || f.responsibility_type} · ${f.work_object_label || '当前事项'}：${f.safe_check || ''}`))}
+        ${section('决策链', decisions.map(d => `${d.label || d.kind}：${d.safe_check || ''}`))}
+        ${section('资源链', resources.map(r => `${r.resource_type || 'resource'}：${r.safe_check || ''}`))}
         ${section('证据', evidence.slice(0, 8).map(e => `${e.id}: ${e.text}`))}
         ${section('过往分析', history.map(h => `${formatTime(h.timestamp)}：${h.summary || ''}`))}
       `;
@@ -505,6 +554,53 @@
           ${(item.terms || []).map(term => `<span class="chip">${escapeHtml(term)}</span>`).join('')}
         </div>
       `).join('') || '<p class="small">暂无。</p>';
+    }
+
+    function renderOrgPatterns(items) {
+      document.getElementById('org-patterns').innerHTML = items.slice(0, 8).map(item => `
+        <div class="card">
+          <strong>${escapeHtml(item.label || item.kind || '')}</strong>
+          <p>${escapeHtml(item.summary || '')}</p>
+          <p class="small">${escapeHtml(item.next_verification_step || '')}</p>
+          <span class="chip">${escapeHtml(item.status || 'pattern_candidate')}</span>
+          <span class="chip">recurrence ${Number(item.recurrence_count || 0)}</span>
+          <span class="chip">confidence ${Number(item.confidence || 0).toFixed(2)}</span>
+          ${(item.actors || []).map(actor => `<span class="chip">${escapeHtml(actor)}</span>`).join('')}
+        </div>
+      `).join('') || '<p class="small">暂无长期模式。当前只有单次信号时不会强行下结论。</p>';
+    }
+
+    function renderPoliticalFlows(data) {
+      const responsibility = data.responsibility_chain || [];
+      const decisions = data.decision_trail || [];
+      const resources = data.resource_map || [];
+      const groups = [
+        ['责任链', responsibility, item => `${item.to_actor || '未明确'} · ${item.label || item.responsibility_type || ''} · ${item.work_object_label || '当前事项'}`],
+        ['决策链', decisions, item => `${item.label || item.kind || '决策信号'} · ${item.visibility || 'unknown'}`],
+        ['资源链', resources, item => `${item.resource_type || 'resource'} · ${(item.controllers || []).join('、') || '未明确控制方'}`],
+      ];
+      document.getElementById('political-flows').innerHTML = groups.map(([title, items, labeler]) => `
+        <div class="card">
+          <strong>${escapeHtml(title)} · ${items.length}</strong>
+          ${items.slice(0, 5).map(item => `
+            <p class="small">${escapeHtml(labeler(item))}</p>
+            <p class="small">${escapeHtml(item.safe_check || '')}</p>
+          `).join('') || '<p class="small">暂无。</p>'}
+        </div>
+      `).join('');
+    }
+
+    function renderEvidenceEvents(summary) {
+      const row = (label, value) => `<span class="chip">${escapeHtml(label)} ${escapeHtml(value)}</span>`;
+      document.getElementById('evidence-events').innerHTML = `
+        <div class="card">
+          <strong>${Number(summary.total || 0)} 条证据事件</strong>
+          <p class="small">公开性、渠道、直接性和敏感级别会影响 long-horizon 判断权重。</p>
+          ${row('private', summary.private_count || 0)}
+          ${row('reported/inferred', summary.reported_or_inferred_count || 0)}
+          ${row('high sensitivity', summary.high_sensitivity_count || 0)}
+        </div>
+      `;
     }
 
     function renderKnowledge(context) {

@@ -40,11 +40,12 @@ class WorkplaceMemoryPattern:
 
 @dataclass
 class PersonProfile:
-    """人物画像 - 存储人物特征和历史行为"""
+    """人物档案 - 存储可观察互动模式和历史信号，不做人格定性"""
     name: str
     title: str = ""
     team: str = ""
-    traits: List[str] = field(default_factory=list)  # 性格、工作风格
+    traits: List[str] = field(default_factory=list)  # Deprecated: 仅兼容旧导出，不再主动写入人格标签
+    observed_patterns: List[str] = field(default_factory=list)  # 可证据追溯的互动 / 工作模式
     risk_signals: List[str] = field(default_factory=list)  # 历史风险模式
     collaboration_style: str = ""
     communication_preference: str = ""
@@ -238,10 +239,11 @@ class WorkplaceMemoryEngine:
         title: str = "",
         team: str = "",
         traits: List[str] = None,
+        observed_patterns: List[str] = None,
         risk_signals: List[str] = None,
         evidence_snippet: str = "",
     ):
-        """更新人物画像"""
+        """更新人物档案。默认只写入可观察模式，不主动生成人格标签。"""
         if name not in self._person_profiles:
             self._person_profiles[name] = PersonProfile(name=name)
         
@@ -254,6 +256,10 @@ class WorkplaceMemoryEngine:
             for trait in traits:
                 if trait not in profile.traits:
                     profile.traits.append(trait)
+        if observed_patterns:
+            for pattern in observed_patterns:
+                if pattern not in profile.observed_patterns:
+                    profile.observed_patterns.append(pattern)
         if risk_signals:
             for risk in risk_signals:
                 if risk not in profile.risk_signals:
@@ -338,7 +344,7 @@ class WorkplaceMemoryEngine:
                     name=name,
                     title=person.get("title", ""),
                     team=person.get("team", ""),
-                    risk_signals=signals,
+                    observed_patterns=signals,
                 )
         
         # 记录风险模式
@@ -351,6 +357,17 @@ class WorkplaceMemoryEngine:
                     description=risk.get("title", category),
                     example=risk.get("evidence_text", ""),
                     confidence=risk.get("confidence", 0.5),
+                )
+
+        for pattern in analysis_result.get("org_dynamics_patterns", []):
+            kind = pattern.get("kind", "")
+            if kind:
+                self.record_pattern(
+                    pattern_type="org_dynamics_pattern",
+                    name=kind,
+                    description=pattern.get("summary", kind),
+                    example=", ".join(pattern.get("evidence_ids", [])[:3]),
+                    confidence=pattern.get("confidence", 0.5),
                 )
         
         # ====== 持续更新关系图谱 ======
@@ -415,6 +432,7 @@ class WorkplaceMemoryEngine:
                 "title": profile.title,
                 "team": profile.team,
                 "traits": profile.traits[:5],
+                "observed_patterns": profile.observed_patterns[:8],
                 "risk_signals": profile.risk_signals[:5],
                 "evidence_count": len(profile.evidence_snippets),
             }
@@ -443,6 +461,7 @@ class WorkplaceMemoryEngine:
                     "title": p.title,
                     "team": p.team,
                     "traits": p.traits,
+                    "observed_patterns": p.observed_patterns,
                     "risk_signals": p.risk_signals,
                     "collaboration_style": p.collaboration_style,
                     "evidence_snippets": p.evidence_snippets,
@@ -500,6 +519,7 @@ class WorkplaceMemoryEngine:
                     title=profile_data.get("title", ""),
                     team=profile_data.get("team", ""),
                     traits=profile_data.get("traits", []),
+                    observed_patterns=profile_data.get("observed_patterns", []),
                     risk_signals=profile_data.get("risk_signals", []),
                     collaboration_style=profile_data.get("collaboration_style", ""),
                     evidence_snippets=profile_data.get("evidence_snippets", []),

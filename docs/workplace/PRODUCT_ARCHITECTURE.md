@@ -112,11 +112,20 @@ Every response contains:
 - `graph.edges`
 - `risks`
 - `hidden_hypotheses`
+- `org_dynamics_signals`
+- `org_dynamics_patterns`
+- `responsibility_chain`
+- `decision_trail`
+- `resource_map`
+- `evidence_event_summary`
 - `recommended_questions`
 - `evidence`
 - `meta`
 
 Hidden hypotheses must use `status = hypothesis_not_fact`.
+Organizational dynamics patterns are conservative long-horizon candidates; a
+single observation remains a `signal_cluster` until recurrence, memory, or user
+confirmation upgrades it.
 
 ## Memory Design
 

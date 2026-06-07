@@ -109,6 +109,15 @@ class Evidence:
     text: str
     source: str
     kind: str = "text"
+    source_type: str = "unknown"
+    source_ref: str = ""
+    timestamp: Optional[str] = None
+    speaker: str = ""
+    quoted_people: List[str] = field(default_factory=list)
+    channel: str = "unknown"
+    visibility: str = "unknown"
+    directness: str = "direct_observation"
+    sensitivity: str = "low"
 
 
 @dataclass
@@ -124,11 +133,116 @@ def stable_id(prefix: str, value: str) -> str:
     return f"{prefix}_{sha1(value.encode('utf-8')).hexdigest()[:10]}"
 
 
-def split_evidence(text: str, source: str) -> List[Evidence]:
+PRIVATE_CONTEXT_TOKENS = ("私下", "单独", "小范围", "别公开", "不让群里说", "先别在群里", "背后")
+PUBLIC_CONTEXT_TOKENS = ("群里", "项目群", "公开", "同步", "邮件", "会议纪要", "共同频道", "全员")
+REPORTED_CONTEXT_TOKENS = ("听说", "据说", "别人说", "转述", "提醒我", "跟我说")
+INFERRED_CONTEXT_TOKENS = ("我感觉", "我猜", "可能", "像是", "是不是")
+HIGH_SENSITIVITY_TOKENS = ("绩效", "考核", "薪酬", "裁员", "离职", "举报", "投诉", "威胁", "背锅", "甩锅")
+MEDIUM_SENSITIVITY_TOKENS = ("私下", "审批", "授权", "老板", "领导", "功劳", "责任", "KPI")
+SPEAKER_PREFIX_RE = re.compile(
+    r"^\s*(?:\[.*?\]|【.*?】)?\s*([\u4e00-\u9fff]{2,4}|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\s*(?:说|表示|认为|要求|提醒|承诺|答应|：|:)"
+)
+
+
+def _infer_evidence_metadata(
+    text: str,
+    *,
+    org_names: Sequence[str] = (),
+    speaker: str = "",
+    channel: str = "",
+    visibility: str = "",
+    directness: str = "",
+    sensitivity: str = "",
+) -> Dict[str, Any]:
+    lowered = text.lower()
+    inferred_channel = channel or "unknown"
+    if inferred_channel == "unknown":
+        if "邮件" in text or "email" in lowered:
+            inferred_channel = "email"
+        elif "会议" in text or "纪要" in text:
+            inferred_channel = "meeting"
+        elif "群" in text or "频道" in text or "channel" in lowered:
+            inferred_channel = "group_chat"
+        elif contains_any(text, PRIVATE_CONTEXT_TOKENS):
+            inferred_channel = "private_chat"
+
+    inferred_visibility = visibility or "unknown"
+    if inferred_visibility == "unknown":
+        if contains_any(text, PRIVATE_CONTEXT_TOKENS):
+            inferred_visibility = "private"
+        elif contains_any(text, PUBLIC_CONTEXT_TOKENS):
+            inferred_visibility = "public"
+
+    inferred_directness = directness or "direct_observation"
+    if contains_any(text, REPORTED_CONTEXT_TOKENS):
+        inferred_directness = "reported"
+    elif contains_any(text, INFERRED_CONTEXT_TOKENS):
+        inferred_directness = "inferred"
+
+    inferred_sensitivity = sensitivity or "low"
+    if contains_any(text, HIGH_SENSITIVITY_TOKENS):
+        inferred_sensitivity = "high"
+    elif contains_any(text, MEDIUM_SENSITIVITY_TOKENS) or inferred_visibility == "private":
+        inferred_sensitivity = "medium"
+
+    inferred_speaker = speaker
+    if not inferred_speaker:
+        speaker_match = SPEAKER_PREFIX_RE.search(text)
+        if speaker_match:
+            candidate = speaker_match.group(1)
+            if candidate not in {"问题", "聊天", "观察", "组织架构"}:
+                inferred_speaker = candidate
+
+    return {
+        "speaker": inferred_speaker,
+        "quoted_people": extract_people(text, org_names),
+        "channel": inferred_channel,
+        "visibility": inferred_visibility,
+        "directness": inferred_directness,
+        "sensitivity": inferred_sensitivity,
+    }
+
+
+def split_evidence(
+    text: str,
+    source: str,
+    *,
+    source_type: str = "unknown",
+    source_ref: str = "",
+    timestamp: Optional[str] = None,
+    speaker: str = "",
+    channel: str = "",
+    visibility: str = "",
+    directness: str = "",
+    sensitivity: str = "",
+    org_names: Sequence[str] = (),
+) -> List[Evidence]:
     parts = [p.strip() for p in SENTENCE_RE.split(text or "") if p and p.strip()]
     if not parts and text.strip():
         parts = [text.strip()]
-    return [Evidence(id=stable_id("ev", f"{source}:{i}:{p}"), text=p, source=source) for i, p in enumerate(parts)]
+    events: List[Evidence] = []
+    for i, p in enumerate(parts):
+        metadata = _infer_evidence_metadata(
+            p,
+            org_names=org_names,
+            speaker=speaker,
+            channel=channel,
+            visibility=visibility,
+            directness=directness,
+            sensitivity=sensitivity,
+        )
+        events.append(
+            Evidence(
+                id=stable_id("ev", f"{source}:{i}:{p}"),
+                text=p,
+                source=source,
+                source_type=source_type,
+                source_ref=source_ref or source,
+                timestamp=str(timestamp) if timestamp is not None else None,
+                **metadata,
+            )
+        )
+    return events
 
 
 def extract_people(text: str, org_names: Sequence[str] = ()) -> List[str]:
@@ -215,7 +329,7 @@ class WorkplaceInsightEngine:
     ) -> Dict[str, Any]:
         org_people = [OrgPerson(**{k: v for k, v in item.items() if k in {"name", "title", "team", "manager", "metadata"}}) for item in org_chart if item.get("name")]
         org_names = [p.name for p in org_people]
-        evidence = self._collect_evidence(chat_messages, uploaded_texts)
+        evidence = self._collect_evidence(chat_messages, uploaded_texts, org_names=org_names)
         
         # 获取记忆上下文
         memory_context = None
@@ -387,18 +501,53 @@ class WorkplaceInsightEngine:
                     existing[key] = value
         return list(merged.values())
 
-    def _collect_evidence(self, chat_messages: Sequence[Dict[str, Any]], uploaded_texts: Sequence[Dict[str, str]]) -> List[Evidence]:
+    def _collect_evidence(
+        self,
+        chat_messages: Sequence[Dict[str, Any]],
+        uploaded_texts: Sequence[Dict[str, str]],
+        *,
+        org_names: Sequence[str] = (),
+    ) -> List[Evidence]:
         evidence: List[Evidence] = []
         for idx, msg in enumerate(chat_messages):
             role = str(msg.get("role") or "unknown")
             content = str(msg.get("content") or "").strip()
             if content:
-                evidence.extend(split_evidence(f"{role}: {content}", f"chat_{idx + 1}"))
+                source = f"chat_{idx + 1}"
+                evidence.extend(
+                    split_evidence(
+                        content,
+                        source,
+                        source_type="chat",
+                        source_ref=str(msg.get("source") or source),
+                        timestamp=msg.get("timestamp") or msg.get("created_at"),
+                        speaker=str(msg.get("speaker") or msg.get("name") or ""),
+                        channel=str(msg.get("channel") or ""),
+                        visibility=str(msg.get("visibility") or ""),
+                        directness=str(msg.get("directness") or ""),
+                        sensitivity=str(msg.get("sensitivity") or ""),
+                        org_names=org_names,
+                    )
+                )
         for idx, item in enumerate(uploaded_texts):
             source = str(item.get("source") or f"upload_{idx + 1}")
             text = str(item.get("text") or "").strip()
             if text:
-                evidence.extend(split_evidence(text, source))
+                evidence.extend(
+                    split_evidence(
+                        text,
+                        source,
+                        source_type="upload",
+                        source_ref=source,
+                        timestamp=item.get("timestamp") or item.get("created_at"),
+                        speaker=str(item.get("speaker") or ""),
+                        channel=str(item.get("channel") or "document"),
+                        visibility=str(item.get("visibility") or ""),
+                        directness=str(item.get("directness") or ""),
+                        sensitivity=str(item.get("sensitivity") or ""),
+                        org_names=org_names,
+                    )
+                )
         return evidence[:120]
 
     def _deterministic_graph(
@@ -615,6 +764,11 @@ class WorkplaceInsightEngine:
             p_node["behavioral_style"] = detect_behavioral_style(p_node["label"], risks, edges)
         behavior_observations = infer_behavior_observations(person_nodes, edges, risks)
         knowledge_context = build_knowledge_context(risks, work_items, behavior_observations, jargon_signals, org_dynamics_signals)
+        evidence_event_summary = self._summarize_evidence_events(evidence)
+        org_dynamics_patterns = self._build_org_dynamics_patterns(org_dynamics_signals, evidence, memory_context)
+        responsibility_chain = self._build_responsibility_chain(work_relationships, org_dynamics_signals, risks, work_items)
+        decision_trail = self._build_decision_trail(work_items, org_dynamics_signals, risks)
+        resource_map = self._build_resource_map(org_dynamics_signals, work_relationships, risks)
         
         # P0 改进 1: 结果分级
         prioritized = self._prioritize_results(risks, hypotheses, [])
@@ -641,6 +795,11 @@ class WorkplaceInsightEngine:
             "behavior_observations": behavior_observations,
             "jargon_signals": jargon_signals,
             "org_dynamics_signals": org_dynamics_signals,
+            "org_dynamics_patterns": org_dynamics_patterns,
+            "responsibility_chain": responsibility_chain,
+            "decision_trail": decision_trail,
+            "resource_map": resource_map,
+            "evidence_event_summary": evidence_event_summary,
             "knowledge_context": knowledge_context,
             "recommended_questions": self._recommended_questions(risk_counts, risks),
             "evidence": [item.__dict__ for item in evidence],
@@ -661,6 +820,10 @@ class WorkplaceInsightEngine:
                 "behavior_observation_count": len(behavior_observations),
                 "jargon_signal_count": len(jargon_signals),
                 "org_dynamics_signal_count": len(org_dynamics_signals),
+                "org_dynamics_pattern_count": len(org_dynamics_patterns),
+                "responsibility_flow_count": len(responsibility_chain),
+                "decision_trail_count": len(decision_trail),
+                "resource_signal_count": len(resource_map),
                 "knowledge_frame_count": len(knowledge_context.get("active_frames", [])),
             },
         }
@@ -777,6 +940,311 @@ class WorkplaceInsightEngine:
                 )
 
         return {"nodes": nodes + risk_nodes + hyp_nodes, "edges": edges}
+
+    def _summarize_evidence_events(self, evidence: Sequence[Evidence]) -> Dict[str, Any]:
+        visibility = Counter(item.visibility or "unknown" for item in evidence)
+        channel = Counter(item.channel or "unknown" for item in evidence)
+        directness = Counter(item.directness or "direct_observation" for item in evidence)
+        sensitivity = Counter(item.sensitivity or "low" for item in evidence)
+        speakers = Counter(item.speaker for item in evidence if item.speaker)
+        return {
+            "total": len(evidence),
+            "by_visibility": dict(visibility),
+            "by_channel": dict(channel),
+            "by_directness": dict(directness),
+            "by_sensitivity": dict(sensitivity),
+            "speakers": dict(speakers.most_common(8)),
+            "private_count": visibility.get("private", 0),
+            "reported_or_inferred_count": directness.get("reported", 0) + directness.get("inferred", 0),
+            "high_sensitivity_count": sensitivity.get("high", 0),
+        }
+
+    def _build_org_dynamics_patterns(
+        self,
+        signals: Sequence[Dict[str, Any]],
+        evidence: Sequence[Evidence],
+        memory_context: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        evidence_by_id = {item.id: item for item in evidence}
+        grouped: Dict[tuple[str, str], List[Dict[str, Any]]] = defaultdict(list)
+        for signal in signals:
+            category = str(signal.get("category") or "")
+            people = ",".join(sorted(str(p) for p in signal.get("people", []) or [])) or "case"
+            grouped[(category, people)].append(signal)
+
+        remembered: Dict[str, Dict[str, Any]] = {}
+        for pattern in (memory_context or {}).get("relevant_patterns", []) or []:
+            if pattern.get("type") == "org_dynamics_pattern":
+                remembered[str(pattern.get("name") or "")] = pattern
+
+        patterns: List[Dict[str, Any]] = []
+        for (category, people_key), items in grouped.items():
+            if not category:
+                continue
+            evidence_ids: List[str] = []
+            terms: List[str] = []
+            people: List[str] = []
+            labels: List[str] = []
+            safe_questions: List[str] = []
+            for item in items:
+                evidence_ids.extend(str(eid) for eid in item.get("evidence_ids", []) or [])
+                terms.extend(str(term) for term in item.get("terms", []) or [])
+                people.extend(str(person) for person in item.get("people", []) or [])
+                if item.get("label"):
+                    labels.append(str(item.get("label")))
+                if item.get("safe_question"):
+                    safe_questions.append(str(item.get("safe_question")))
+            evidence_ids = list(dict.fromkeys(evidence_ids))
+            people = list(dict.fromkeys(people))
+            evidence_items = [evidence_by_id[eid] for eid in evidence_ids if eid in evidence_by_id]
+            source_diversity = len({item.source for item in evidence_items})
+            direct_count = sum(1 for item in evidence_items if item.directness == "direct_observation")
+            private_count = sum(1 for item in evidence_items if item.visibility == "private")
+            timestamps = sorted(str(item.timestamp) for item in evidence_items if item.timestamp)
+            remembered_pattern = remembered.get(category) or {}
+            memory_bonus = 0.08 if remembered_pattern else 0.0
+            confirmation_bonus = 0.08 if remembered_pattern.get("confidence", 0) else 0.0
+            confidence = min(
+                0.9,
+                0.28
+                + 0.12 * len(items)
+                + 0.06 * source_diversity
+                + 0.06 * min(2, direct_count)
+                + 0.04 * min(2, private_count)
+                + memory_bonus
+                + confirmation_bonus,
+            )
+            status = "pattern_candidate" if len(items) > 1 or remembered_pattern else "signal_cluster"
+            label = labels[0] if labels else category
+            if status == "pattern_candidate":
+                summary = f"{label} 出现 {len(items)} 次，涉及 {source_diversity or 1} 个证据来源；仍需用户确认后才能进入长期结论。"
+            else:
+                summary = f"{label} 目前只是单次组织动态信号，不应视为长期模式；需要后续证据或用户确认。"
+            patterns.append(
+                {
+                    "id": stable_id("orgd_pattern", f"{category}:{people_key}:{','.join(evidence_ids)}"),
+                    "kind": category,
+                    "label": label,
+                    "actors": people,
+                    "terms": list(dict.fromkeys(terms))[:12],
+                    "first_seen": timestamps[0] if timestamps else None,
+                    "last_seen": timestamps[-1] if timestamps else None,
+                    "evidence_ids": evidence_ids[:10],
+                    "source_diversity": source_diversity,
+                    "recurrence_count": len(items),
+                    "contradiction_count": 0,
+                    "user_confirmations": 1 if remembered_pattern else 0,
+                    "user_rejections": 0,
+                    "confidence": round(confidence, 3),
+                    "status": status,
+                    "summary": summary,
+                    "next_verification_step": safe_questions[0] if safe_questions else "回到共同频道确认授权、责任和信息流。",
+                }
+            )
+
+        return sorted(patterns, key=lambda item: (-float(item["confidence"]), item["kind"]))[:20]
+
+    def _build_responsibility_chain(
+        self,
+        work_relationships: Sequence[Dict[str, Any]],
+        org_dynamics_signals: Sequence[Dict[str, Any]],
+        risks: Sequence[Dict[str, Any]],
+        work_items: Sequence[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        relation_type_map = {
+            "owns_work": ("execution", "负责 / 执行"),
+            "approves_work": ("approval", "审批 / 授权"),
+            "validates_work": ("acceptance", "验收 / 评审"),
+            "sets_deadline": ("deadline_pressure", "设定时间要求"),
+            "depends_on": ("dependency", "依赖 / 等待"),
+            "mentions_work": ("involvement", "涉及工作"),
+        }
+        flows: List[Dict[str, Any]] = []
+        for edge in work_relationships:
+            relation_type = str(edge.get("type") or "mentions_work")
+            responsibility_type, label = relation_type_map.get(relation_type, ("involvement", edge.get("label") or relation_type))
+            actor = str(edge.get("source_name") or "")
+            work_label = str(edge.get("target_name") or edge.get("target") or "工作对象")
+            if not actor:
+                continue
+            flows.append(
+                {
+                    "id": stable_id("resp", f"{actor}:{work_label}:{relation_type}:{edge.get('id', '')}"),
+                    "work_object_id": edge.get("target"),
+                    "work_object_label": work_label,
+                    "from_actor": None,
+                    "to_actor": actor,
+                    "responsibility_type": responsibility_type,
+                    "label": label,
+                    "evidence_ids": edge.get("evidence_ids", []) or [],
+                    "status": "observed",
+                    "safe_check": "确认执行、审批、验收和最终结果责任是否由同一人承担。",
+                }
+            )
+
+        category_to_type = {
+            "blame_shifting": ("blame", "责任可能下放"),
+            "credit_capture": ("credit", "信用 / 功劳流向"),
+            "performance_pressure_transfer": ("risk", "绩效压力传导"),
+            "shadow_decision_chain": ("approval", "影子授权 / 决策链"),
+            "sponsorship_and_backing": ("approval", "背书 / 授权"),
+        }
+        default_work = next((item for item in work_items if item.get("category") in {"project", "task", "decision"}), None)
+        for signal in org_dynamics_signals:
+            category = str(signal.get("category") or "")
+            if category not in category_to_type:
+                continue
+            responsibility_type, label = category_to_type[category]
+            for actor in [str(p) for p in signal.get("people", []) or []][:4] or ["未明确人物"]:
+                flows.append(
+                    {
+                        "id": stable_id("resp", f"{actor}:{category}:{','.join(signal.get('evidence_ids', []) or [])}"),
+                        "work_object_id": (default_work or {}).get("id"),
+                        "work_object_label": (default_work or {}).get("label") or "当前事项",
+                        "from_actor": None,
+                        "to_actor": actor,
+                        "responsibility_type": responsibility_type,
+                        "label": label,
+                        "evidence_ids": signal.get("evidence_ids", []) or [],
+                        "status": "hypothesized" if category in {"blame_shifting", "credit_capture"} else "observed",
+                        "safe_check": signal.get("safe_question") or "把责任、授权和验收边界写清楚。",
+                    }
+                )
+
+        for risk in risks:
+            if risk.get("category") not in {"ownership_ambiguity", "credit_blame"}:
+                continue
+            for actor in [str(p) for p in risk.get("people", []) or []][:3] or ["未明确人物"]:
+                flows.append(
+                    {
+                        "id": stable_id("resp", f"{actor}:{risk.get('category')}:{risk.get('id')}"),
+                        "work_object_id": (default_work or {}).get("id"),
+                        "work_object_label": (default_work or {}).get("label") or "当前事项",
+                        "from_actor": None,
+                        "to_actor": actor,
+                        "responsibility_type": "risk",
+                        "label": risk.get("title") or "责任风险",
+                        "evidence_ids": risk.get("evidence_ids", []) or [],
+                        "status": "hypothesized",
+                        "safe_check": risk.get("suggestion") or "确认 owner、审批人、验收人和风险接受人。",
+                    }
+                )
+
+        seen = set()
+        unique: List[Dict[str, Any]] = []
+        for flow in flows:
+            key = (flow["to_actor"], flow["responsibility_type"], tuple(flow.get("evidence_ids", [])[:3]))
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(flow)
+        return unique[:40]
+
+    def _build_decision_trail(
+        self,
+        work_items: Sequence[Dict[str, Any]],
+        org_dynamics_signals: Sequence[Dict[str, Any]],
+        risks: Sequence[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        trail: List[Dict[str, Any]] = []
+        for item in work_items:
+            if item.get("category") not in {"decision", "approval"}:
+                continue
+            trail.append(
+                {
+                    "id": stable_id("decision", f"{item.get('id')}:{item.get('category')}"),
+                    "kind": item.get("category"),
+                    "label": item.get("label"),
+                    "actors": [],
+                    "evidence_ids": item.get("evidence_ids", []) or [],
+                    "visibility": "unknown",
+                    "status": "observed",
+                    "safe_check": "确认决策 owner、审批路径和记录位置。",
+                }
+            )
+        for signal in org_dynamics_signals:
+            category = signal.get("category")
+            if category not in {"shadow_decision_chain", "sponsorship_and_backing"}:
+                continue
+            trail.append(
+                {
+                    "id": stable_id("decision", f"{category}:{','.join(signal.get('evidence_ids', []) or [])}"),
+                    "kind": "shadow_decision" if category == "shadow_decision_chain" else "sponsorship",
+                    "label": signal.get("label"),
+                    "actors": signal.get("people", []) or [],
+                    "evidence_ids": signal.get("evidence_ids", []) or [],
+                    "visibility": "private_or_unclear" if category == "shadow_decision_chain" else "authority_signal",
+                    "status": "signal_not_fact",
+                    "safe_check": signal.get("safe_question") or "把授权人和决策记录补到可追溯渠道。",
+                }
+            )
+        for risk in risks:
+            if risk.get("category") != "process_bypass":
+                continue
+            trail.append(
+                {
+                    "id": stable_id("decision", f"process_exception:{risk.get('id')}"),
+                    "kind": "process_exception",
+                    "label": risk.get("title"),
+                    "actors": risk.get("people", []) or [],
+                    "evidence_ids": risk.get("evidence_ids", []) or [],
+                    "visibility": "unclear",
+                    "status": "risk_signal",
+                    "safe_check": risk.get("suggestion") or "确认是否需要补审批或书面记录。",
+                }
+            )
+        return trail[:30]
+
+    def _build_resource_map(
+        self,
+        org_dynamics_signals: Sequence[Dict[str, Any]],
+        work_relationships: Sequence[Dict[str, Any]],
+        risks: Sequence[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        resources: List[Dict[str, Any]] = []
+        for signal in org_dynamics_signals:
+            if signal.get("category") != "resource_control":
+                continue
+            resources.append(
+                {
+                    "id": stable_id("resource", f"resource_control:{','.join(signal.get('evidence_ids', []) or [])}"),
+                    "resource_type": "resource_or_permission",
+                    "controllers": signal.get("people", []) or [],
+                    "work_objects": [],
+                    "evidence_ids": signal.get("evidence_ids", []) or [],
+                    "status": "signal_not_fact",
+                    "safe_check": signal.get("safe_question") or "确认缺的是权限、资源、排期还是负责人确认。",
+                }
+            )
+        for edge in work_relationships:
+            if edge.get("type") != "depends_on":
+                continue
+            resources.append(
+                {
+                    "id": stable_id("resource", f"dependency:{edge.get('id')}"),
+                    "resource_type": "dependency",
+                    "controllers": [edge.get("source_name")] if edge.get("source_name") else [],
+                    "work_objects": [edge.get("target_name") or edge.get("target")],
+                    "evidence_ids": edge.get("evidence_ids", []) or [],
+                    "status": "observed",
+                    "safe_check": "把依赖项公开化，并确认解除依赖需要谁给资源或权限。",
+                }
+            )
+        for risk in risks:
+            if risk.get("category") != "power_pressure":
+                continue
+            resources.append(
+                {
+                    "id": stable_id("resource", f"pressure:{risk.get('id')}"),
+                    "resource_type": "priority_or_performance_pressure",
+                    "controllers": risk.get("people", []) or [],
+                    "work_objects": [],
+                    "evidence_ids": risk.get("evidence_ids", []) or [],
+                    "status": "risk_signal",
+                    "safe_check": risk.get("suggestion") or "把压力转成优先级、资源和取舍条件。",
+                }
+            )
+        return resources[:30]
 
     def _build_hypotheses(self, risk_counts: Counter, edges: Sequence[Dict[str, Any]], risks: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
         hypotheses: List[Dict[str, Any]] = []
@@ -1067,9 +1535,10 @@ class WorkplaceInsightEngine:
             if profiles or patterns:
                 memory_lines = []
                 if profiles:
-                    memory_lines.append("已知人物画像：")
+                    memory_lines.append("已知人物观察档案：")
                     for name, p in profiles.items():
-                        memory_lines.append(f"- {name}: {p.get('title', '')} | {p.get('team', '')} | 特征: {', '.join(p.get('traits', [])[:3])}")
+                        observed = p.get("observed_patterns") or p.get("risk_signals") or []
+                        memory_lines.append(f"- {name}: {p.get('title', '')} | {p.get('team', '')} | 观察模式: {', '.join(observed[:3])}")
                 if patterns:
                     memory_lines.append("\n已知模式：")
                     for p in patterns[:3]:
@@ -1105,7 +1574,7 @@ class WorkplaceInsightEngine:
 {knowledge_section}
 
 当前规则抽取结果摘要：
-{json.dumps({"summary": base.get("summary"), "risks": base.get("risks", [])[:8], "relationships": base.get("relationships", [])[:10], "work_graph": base.get("work_graph", {}), "behavior_observations": base.get("behavior_observations", [])[:8], "jargon_signals": base.get("jargon_signals", [])[:12], "org_dynamics_signals": base.get("org_dynamics_signals", [])[:12]}, ensure_ascii=False)}
+{json.dumps({"summary": base.get("summary"), "risks": base.get("risks", [])[:8], "relationships": base.get("relationships", [])[:10], "work_graph": base.get("work_graph", {}), "behavior_observations": base.get("behavior_observations", [])[:8], "jargon_signals": base.get("jargon_signals", [])[:12], "org_dynamics_signals": base.get("org_dynamics_signals", [])[:12], "org_dynamics_patterns": base.get("org_dynamics_patterns", [])[:8], "responsibility_chain": base.get("responsibility_chain", [])[:8], "decision_trail": base.get("decision_trail", [])[:8], "resource_map": base.get("resource_map", [])[:8]}, ensure_ascii=False)}
 
 请输出 JSON：
 {{

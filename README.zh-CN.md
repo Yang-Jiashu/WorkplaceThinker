@@ -240,6 +240,11 @@ hidden_hypotheses
 behavior_observations
 jargon_signals
 org_dynamics_signals
+org_dynamics_patterns
+responsibility_chain
+decision_trail
+resource_map
+evidence_event_summary
 knowledge_context
 recommended_questions
 evidence
@@ -265,6 +270,11 @@ meta
 | `behavior_observations` | 基于证据的行为观察，不是人格标签。 |
 | `jargon_signals` | 命中的互联网职场黑话、归一化语义和安全确认问题。 |
 | `org_dynamics_signals` | 组织政治 / 权力动态信号，例如信息门控、影子决策、背书、责任转移、资源控制等。 |
+| `org_dynamics_patterns` | 从重复组织动态信号中保守合并出来的长期模式候选。 |
+| `responsibility_chain` | 执行、审批、验收、功劳、责任、压力和风险的流向链。 |
+| `decision_trail` | 正式决策、审批、私下决策和流程例外，帮助确认可追溯记录。 |
+| `resource_map` | 资源、依赖、优先级、权限和绩效压力控制信号。 |
+| `evidence_event_summary` | 按公开性、渠道、直接性、说话人和敏感级别统计证据事件。 |
 | `knowledge_context` | 本轮触发的职场知识框架和安全边界。 |
 | `control_manifest` | 用户控制动作和记忆策略。 |
 

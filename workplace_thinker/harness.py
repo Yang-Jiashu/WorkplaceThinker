@@ -329,6 +329,10 @@ class WorkplaceInsightHarness:
         behaviors = result.get("behavior_observations") or []
         jargon_signals = result.get("jargon_signals") or []
         org_dynamics_signals = result.get("org_dynamics_signals") or []
+        org_dynamics_patterns = result.get("org_dynamics_patterns") or []
+        responsibility_chain = result.get("responsibility_chain") or []
+        decision_trail = result.get("decision_trail") or []
+        resource_map = result.get("resource_map") or []
         evidence_items = result.get("evidence") or []
         work_graph = result.get("work_graph") or {}
         work_edges = work_graph.get("edges") or []
@@ -365,9 +369,36 @@ class WorkplaceInsightHarness:
                 item for item in org_dynamics_signals
                 if name in [str(p) for p in item.get("people", []) or []]
             ]
+            related_org_patterns = [
+                item for item in org_dynamics_patterns
+                if name in [str(p) for p in item.get("actors", []) or []]
+            ]
+            related_responsibility = [
+                item for item in responsibility_chain
+                if name in {str(item.get("from_actor") or ""), str(item.get("to_actor") or "")}
+            ]
+            related_decisions = [
+                item for item in decision_trail
+                if name in [str(p) for p in item.get("actors", []) or []]
+            ]
+            related_resources = [
+                item for item in resource_map
+                if name in [str(p) for p in item.get("controllers", []) or []]
+            ]
 
             evidence_ids: List[str] = []
-            for collection in (related_relationships, related_risks, related_behaviors, related_work_edges, related_jargon, related_org_dynamics):
+            for collection in (
+                related_relationships,
+                related_risks,
+                related_behaviors,
+                related_work_edges,
+                related_jargon,
+                related_org_dynamics,
+                related_org_patterns,
+                related_responsibility,
+                related_decisions,
+                related_resources,
+            ):
                 for item in collection:
                     evidence_ids.extend(str(eid) for eid in item.get("evidence_ids", []) or [])
             evidence_ids.extend(str(eid) for eid in person.get("evidence_ids", []) or [])
@@ -383,6 +414,7 @@ class WorkplaceInsightHarness:
                         "title": profile.title,
                         "team": profile.team,
                         "traits": profile.traits,
+                        "observed_patterns": getattr(profile, "observed_patterns", []),
                         "risk_signals": profile.risk_signals,
                         "collaboration_style": profile.collaboration_style,
                         "communication_preference": profile.communication_preference,
@@ -416,6 +448,10 @@ class WorkplaceInsightHarness:
                     "work_edges": related_work_edges,
                     "jargon_signals": related_jargon,
                     "org_dynamics_signals": related_org_dynamics,
+                    "org_dynamics_patterns": related_org_patterns,
+                    "responsibility_chain": related_responsibility,
+                    "decision_trail": related_decisions,
+                    "resource_map": related_resources,
                     "evidence": [evidence_by_id[eid] for eid in evidence_ids if eid in evidence_by_id],
                 },
                 "history": historical_summaries[-10:],
@@ -455,6 +491,7 @@ class WorkplaceInsightHarness:
                     "title": profile.title,
                     "team": profile.team,
                     "traits": profile.traits,
+                    "observed_patterns": getattr(profile, "observed_patterns", []),
                     "risk_signals": profile.risk_signals,
                     "evidence_snippets": profile.evidence_snippets[-10:],
                 }
