@@ -410,6 +410,7 @@ node --check /tmp/workplace_radar_script.js
 - [Agent architecture](docs/workplace/AGENT_ARCHITECTURE.md)
 - [Product architecture](docs/workplace/PRODUCT_ARCHITECTURE.md)
 - [Algorithm design](docs/workplace/ALGORITHM_DESIGN.md)
+- [Long-horizon organizational dynamics architecture](docs/workplace/ORGANIZATIONAL_DYNAMICS_ARCHITECTURE.md)
 
 ## Roadmap
 

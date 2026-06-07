@@ -381,6 +381,7 @@ node --check /tmp/workplace_radar_script.js
 - [Agent 架构](docs/workplace/AGENT_ARCHITECTURE.md)
 - [产品架构](docs/workplace/PRODUCT_ARCHITECTURE.md)
 - [算法设计](docs/workplace/ALGORITHM_DESIGN.md)
+- [长期组织政治 / 权力动态架构](docs/workplace/ORGANIZATIONAL_DYNAMICS_ARCHITECTURE.md)
 
 ## 下一步
 
