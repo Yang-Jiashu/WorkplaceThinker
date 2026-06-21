@@ -8,6 +8,7 @@ Enhanced with Memory System for continuous learning and pattern recognition.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import uuid
@@ -115,6 +116,27 @@ async def workplace_radar_home() -> str:
     if html_path.exists():
         return html_path.read_text(encoding="utf-8")
     return "<h1>WorkplaceThinker</h1><p>apps/workplace_radar.html not found.</p>"
+
+
+@app.get("/api/v1/config")
+async def get_runtime_config() -> Dict[str, Any]:
+    """Return safe runtime capabilities for the browser UI."""
+    return {
+        "app": "WorkplaceThinker",
+        "api_version": app.version,
+        "capabilities": {
+            "raw_analysis": True,
+            "memory": True,
+            "org_structure": True,
+            "org_import": True,
+            "memory_migration": True,
+            "vlm_import": True,
+        },
+        "runtime": {
+            "vlm_configured": bool(os.getenv("VLM_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("LLM_BINDING_API_KEY")),
+            "vlm_model": os.getenv("VLM_MODEL") or "gpt-4o-mini",
+        },
+    }
 
 
 @app.post("/api/v1/workplace/analyze")

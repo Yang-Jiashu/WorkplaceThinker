@@ -215,6 +215,16 @@ class WorkplaceInsightAPITest(unittest.TestCase):
         self.assertIn("harness", payload)
 
     @unittest.skipIf(TestClient is None or app is None, "fastapi is not installed")
+    def test_api_config_endpoint(self):
+        client = TestClient(app)
+        response = client.get("/api/v1/config")
+        self.assertEqual(200, response.status_code)
+        payload = response.json()
+        self.assertTrue(payload["capabilities"]["org_import"])
+        self.assertTrue(payload["capabilities"]["memory_migration"])
+        self.assertIn("vlm_configured", payload["runtime"])
+
+    @unittest.skipIf(TestClient is None or app is None, "fastapi is not installed")
     def test_api_raw_analyze_endpoint(self):
         client = TestClient(app)
         response = client.post(

@@ -56,7 +56,71 @@
       cursor: pointer;
     }
     button.primary { background: var(--copper); border-color: var(--copper); color: #fffefa; }
+    button.full { width: 100%; }
+    input[type="text"], input[type="url"] {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: var(--surface);
+      color: var(--ink);
+      outline: none;
+    }
+    input[type="text"]:focus, input[type="url"]:focus { border-color: var(--copper); box-shadow: 0 0 0 3px rgba(184,92,56,.12); }
     .controls { padding: 20px 24px 28px; }
+    .start-grid { display: grid; gap: 10px; margin-bottom: 18px; }
+    .start-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 12px;
+    }
+    .start-card strong { display: block; margin-bottom: 4px; }
+    .quick-row { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--surface);
+    }
+    .status-pill.ok { border-color: rgba(84,116,107,.35); color: var(--sage); }
+    .status-pill.warn { border-color: rgba(184,92,56,.35); color: var(--copper); }
+    .settings-panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255,254,250,.72);
+      padding: 12px;
+      margin: 12px 0;
+    }
+    .check-row { display:flex; align-items:center; gap:8px; margin:8px 0; color:var(--muted); font-size:12px; }
+    .check-row input { width:auto; }
+    .empty-graph {
+      height: 100%;
+      display: grid;
+      place-items: center;
+      padding: 32px;
+      text-align: center;
+    }
+    .empty-graph-inner { max-width: 520px; }
+    .empty-graph h2 { margin: 0 0 10px; font-family: Georgia, "Times New Roman", serif; font-size: 34px; line-height: 1.1; }
+    .empty-actions { display:flex; justify-content:center; gap:10px; flex-wrap:wrap; margin-top:18px; }
+    .banner {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff7f0;
+      padding: 10px 12px;
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .banner.ok { background: #f3f8f5; }
+    .import-center { display:grid; gap:10px; margin-bottom:14px; }
+    .progress-row { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:8px 0; }
     main { position: relative; overflow: hidden; }
     .topbar {
       height: 76px;
@@ -68,6 +132,7 @@
       border-bottom: 1px solid var(--line);
     }
     .graph-wrap { position: absolute; inset: 76px 0 0; }
+    .graph-wrap.has-empty svg { display:none; }
     svg { width: 100%; height: 100%; display: block; }
     .node circle { stroke: #fffefa; stroke-width: 4; }
     .node text { font-size: 13px; fill: #fffefa; font-weight: 700; text-anchor: middle; dominant-baseline: middle; }
@@ -113,6 +178,7 @@
     .org-tree { display: grid; gap: 8px; margin-top: 10px; }
     .org-node { border-left: 3px solid var(--lake); padding-left: 10px; margin: 6px 0 6px 10px; }
     .org-editor { min-height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+    .migration-editor { min-height: 150px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
     input[type="file"] { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--surface); }
     @media (max-width: 1100px) {
       .shell { grid-template-columns: 1fr; }
@@ -131,34 +197,64 @@
         <p>把聊天、上传材料和组织架构转成可审计的人际关系图、合作图和隐藏风险假设。</p>
       </div>
       <div class="controls">
+        <div class="start-grid">
+          <div class="start-card">
+            <strong>开始工作台</strong>
+            <p class="small">先选入口，再分析。支持粘贴材料、导入组织架构图、迁移旧记忆。</p>
+            <div class="quick-row">
+              <button onclick="focusMainInput()">粘贴信息</button>
+              <button onclick="openOrgImport()">导入组织架构图</button>
+              <button onclick="openMigrationPanel()">迁移旧记忆</button>
+            </div>
+          </div>
+          <div class="start-card">
+            <div class="progress-row">
+              <strong>运行状态</strong>
+              <span id="api-status" class="status-pill warn">未检测</span>
+            </div>
+            <p id="config-summary" class="small">当前从本地页面打开时，需要配置 API 地址才能调用后端。</p>
+            <div class="quick-row">
+              <button onclick="toggleSettings()">配置</button>
+              <button onclick="checkConfig()">检测服务</button>
+            </div>
+          </div>
+        </div>
+        <div id="settings-panel" class="settings-panel" style="display:none;">
+          <strong>运行配置</strong>
+          <label>API 地址</label>
+          <input id="api-base" type="url" placeholder="http://127.0.0.1:8000" />
+          <label>Session ID</label>
+          <input id="session-id-input" type="text" placeholder="留空自动创建；填入可继续旧 session" />
+          <label class="check-row"><input id="cfg-use-memory" type="checkbox" checked /> 使用长期记忆</label>
+          <label class="check-row"><input id="cfg-save-memory" type="checkbox" checked /> 分析结果写入记忆</label>
+          <label class="check-row"><input id="cfg-use-llm" type="checkbox" /> 使用 LLM 增强分析</label>
+          <p id="runtime-status" class="small">VLM Key 在后端环境变量配置：VLM_API_KEY 或 OPENAI_API_KEY。</p>
+        </div>
+        <div id="migration-panel" class="settings-panel" style="display:none;">
+          <strong>旧数据迁移</strong>
+          <p class="small">粘贴旧 memory export，先预览 schema 迁移结果；确认没问题后可以导入当前 session。</p>
+          <textarea id="migration-input" class="migration-editor" placeholder='{"org_chart":[{"name":"张伟","team":"Product","reports_to":"王强"}]}'></textarea>
+          <div class="quick-row">
+            <button onclick="previewMigration()">预览迁移</button>
+            <button class="primary" onclick="importMigratedMemory()">导入迁移结果</button>
+          </div>
+          <p id="migration-status" class="small"></p>
+          <textarea id="migration-output" class="migration-editor" placeholder="迁移结果会显示在这里"></textarea>
+        </div>
         <label>关注问题</label>
-        <textarea id="question">我是不是有背锅风险？哪些关系和隐藏问题需要确认？</textarea>
+        <textarea id="question" placeholder="例如：这段协作里有哪些关系、责任和隐藏风险需要确认？"></textarea>
         <label>直接粘贴所有信息</label>
-        <textarea id="information" style="min-height: 280px;">问题：我是不是有背锅风险？哪些关系和隐藏问题需要确认？
-
-组织架构：张伟 - 产品负责人 - Product 团队 - 汇报王强
-组织架构：王强 - 部门经理 - Platform 团队
-组织架构：李娜 - 资深同事 - Product 团队 - 汇报王强
-
-聊天/观察：
-张伟说这个需求先做，不用审批，后面再补流程。
-李娜提醒我，王强之前答应负责验收，但现在又改口说不是他负责。
-张伟和王强私下沟通过，没有同步到项目群。
-王强要求周五必须上线，不然会影响绩效。</textarea>
+        <textarea id="information" style="min-height: 280px;" placeholder="把聊天记录、会议纪要、组织架构、项目背景一次性贴进来。也可以先点右侧/入口导入组织架构图。"></textarea>
         <details style="margin-top: 16px;">
           <summary class="small" style="cursor:pointer;">高级：结构化组织架构 JSON，可不填</summary>
           <label>组织架构 JSON</label>
-          <textarea id="org" style="min-height: 120px;">[
-  {"name":"张伟","title":"产品负责人","team":"Product","manager":"王强"},
-  {"name":"王强","title":"部门经理","team":"Platform"},
-  {"name":"李娜","title":"资深同事","team":"Product","manager":"王强"}
-]</textarea>
+          <textarea id="org" style="min-height: 120px;" placeholder='[{"name":"张伟","title":"产品负责人","team":"Product","manager":"王强"}]'></textarea>
         </details>
         <div style="display:flex; gap:10px; margin-top:18px;">
           <button class="primary" onclick="analyze()">生成关系图</button>
           <button onclick="loadSample()">示例</button>
         </div>
-        <p class="small">默认只需要粘贴信息。后端接口：POST /api/v1/workplace/analyze/raw。打不开后端时，页面会展示内置示例图。</p>
+        <p id="analysis-status" class="small">默认只需要粘贴信息。后端接口：POST /api/v1/workplace/analyze/raw。</p>
       </div>
     </aside>
     <main>
@@ -167,9 +263,26 @@
           <div class="kicker">relationship graph</div>
           <strong id="graph-title">证据化关系与风险图</strong>
         </div>
-        <div class="small">圆点：人物 / 方块：风险 / 菱形：隐藏假设</div>
+        <div class="quick-row">
+          <span class="small">圆点：人物 / 方块：风险 / 菱形：隐藏假设</span>
+          <button onclick="toggleSettings()">配置</button>
+        </div>
       </div>
-      <div class="graph-wrap"><svg id="graph"></svg></div>
+      <div id="graph-wrap" class="graph-wrap has-empty">
+        <div id="empty-graph" class="empty-graph">
+          <div class="empty-graph-inner">
+            <div class="kicker">ready when you are</div>
+            <h2>先导入，再分析</h2>
+            <p>粘贴聊天/会议/项目背景，或上传组织架构截图。系统会把事实、关系、工作内容和风险假设分开呈现。</p>
+            <div class="empty-actions">
+              <button class="primary" onclick="focusMainInput()">粘贴材料</button>
+              <button onclick="openOrgImport()">导入组织架构图</button>
+              <button onclick="loadSample()">查看示例</button>
+            </div>
+          </div>
+        </div>
+        <svg id="graph"></svg>
+      </div>
     </main>
     <section class="side panel">
       <div class="metric-grid">
@@ -226,6 +339,120 @@
     let peopleMode = 'directory';
     let currentSessionId = '';
     const ORG_DRAFT_KEY = 'workplace_thinker_org_structure_draft';
+    const CONFIG_KEY = 'workplace_thinker_runtime_config';
+    let migratedMemoryData = null;
+
+    function defaultApiBase() {
+      return location.protocol === 'file:' ? 'http://127.0.0.1:8000' : '';
+    }
+
+    function loadConfig() {
+      try {
+        const config = {
+          apiBase: defaultApiBase(),
+          sessionId: '',
+          useMemory: true,
+          saveMemory: true,
+          useLlm: false,
+          ...(JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}')),
+        };
+        if (location.protocol === 'file:' && !config.apiBase) config.apiBase = defaultApiBase();
+        return config;
+      } catch {
+        return {apiBase: defaultApiBase(), sessionId: '', useMemory: true, saveMemory: true, useLlm: false};
+      }
+    }
+
+    function saveConfig() {
+      const config = {
+        apiBase: document.getElementById('api-base').value.trim(),
+        sessionId: document.getElementById('session-id-input').value.trim(),
+        useMemory: document.getElementById('cfg-use-memory').checked,
+        saveMemory: document.getElementById('cfg-save-memory').checked,
+        useLlm: document.getElementById('cfg-use-llm').checked,
+      };
+      localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+      currentSessionId = config.sessionId || currentSessionId;
+      refreshConfigSummary();
+      return config;
+    }
+
+    function initConfig() {
+      const config = loadConfig();
+      document.getElementById('api-base').value = config.apiBase || '';
+      document.getElementById('session-id-input').value = config.sessionId || '';
+      document.getElementById('cfg-use-memory').checked = config.useMemory !== false;
+      document.getElementById('cfg-save-memory').checked = config.saveMemory !== false;
+      document.getElementById('cfg-use-llm').checked = Boolean(config.useLlm);
+      currentSessionId = config.sessionId || currentSessionId;
+      ['api-base','session-id-input','cfg-use-memory','cfg-save-memory','cfg-use-llm'].forEach(id => {
+        document.getElementById(id).addEventListener('change', saveConfig);
+        document.getElementById(id).addEventListener('input', saveConfig);
+      });
+      refreshConfigSummary();
+    }
+
+    function apiUrl(path) {
+      const base = (loadConfig().apiBase || '').replace(/\/$/, '');
+      return `${base}${path}`;
+    }
+
+    function ensureSessionId() {
+      const config = loadConfig();
+      if (!currentSessionId) currentSessionId = config.sessionId || `ui_${Date.now()}`;
+      document.getElementById('session-id-input').value = currentSessionId;
+      saveConfig();
+      return currentSessionId;
+    }
+
+    function refreshConfigSummary() {
+      const config = loadConfig();
+      const api = config.apiBase || '同源 API';
+      const session = currentSessionId || config.sessionId || '自动创建';
+      document.getElementById('config-summary').textContent = `API：${api} · Session：${session} · 记忆：${config.useMemory === false ? '关闭' : '开启'}`;
+    }
+
+    function toggleSettings(forceOpen = false) {
+      const panel = document.getElementById('settings-panel');
+      panel.style.display = forceOpen || panel.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function openMigrationPanel() {
+      document.getElementById('migration-panel').style.display = 'block';
+      toggleSettings(true);
+      document.getElementById('migration-input').focus();
+    }
+
+    function focusMainInput() {
+      document.getElementById('information').focus();
+    }
+
+    function openOrgImport() {
+      setView('org');
+      if (!currentData) renderOrgStructure(loadOrgDraft());
+      setTimeout(() => document.getElementById('org-import-text')?.focus(), 0);
+    }
+
+    async function checkConfig() {
+      saveConfig();
+      const status = document.getElementById('api-status');
+      const runtime = document.getElementById('runtime-status');
+      status.textContent = '检测中';
+      status.className = 'status-pill warn';
+      try {
+        const response = await fetch(apiUrl('/api/v1/config'));
+        if (!response.ok) throw new Error(await response.text());
+        const config = await response.json();
+        status.textContent = '已连接';
+        status.className = 'status-pill ok';
+        runtime.textContent = `后端已连接 · VLM：${config.runtime?.vlm_configured ? '已配置' : '未配置'} · 模型：${config.runtime?.vlm_model || '未标注'}`;
+        document.getElementById('analysis-status').textContent = '后端服务已连接，可以分析真实输入。';
+      } catch (err) {
+        status.textContent = '未连接';
+        status.className = 'status-pill warn';
+        runtime.textContent = `未连上后端：${err.message || err}。如果从文件打开，请确认 API 地址，例如 http://127.0.0.1:8000。`;
+      }
+    }
 
     const fallback = {
       summary: "识别到 3 个相关人物、5 条关系边。主要风险：流程绕过、信息不对称、责任边界不清。所有隐藏问题均以假设呈现，需要回到证据和确认问题验证。",
@@ -338,33 +565,83 @@
       })).filter(person => person.name);
     }
 
+    function emptyOrgStructure() {
+      return {
+        schema_name: 'workplace_org_structure',
+        schema_version: 2,
+        departments: [],
+        people: [],
+        reporting_lines: [],
+        department_tree: [],
+        reporting_tree: [],
+        summary: {department_count: 0, person_count: 0, reporting_line_count: 0, root_count: 0},
+        storage: {scope: 'session_memory', status: 'draft', editable: true},
+      };
+    }
+
     async function analyze() {
+      saveConfig();
       const information = document.getElementById('information').value;
       const question = document.getElementById('question').value;
+      const status = document.getElementById('analysis-status');
+      if (!information.trim() && !parseOrg().length) {
+        status.textContent = '请先粘贴信息、填写组织架构 JSON，或导入组织架构图片。';
+        focusMainInput();
+        return;
+      }
+      const config = loadConfig();
       const payload = {
-        question,
+        question: question || '请分析这里的人际关系、工作内容、组织结构和需要确认的风险。',
         information,
         org_chart: parseOrg(),
-        use_llm: false
+        use_llm: config.useLlm,
+        session_id: currentSessionId || config.sessionId || undefined,
+        use_memory: config.useMemory,
+        save_to_memory: config.saveMemory,
       };
       try {
-        const res = await fetch('/api/v1/workplace/analyze/raw', {
+        status.textContent = '正在分析真实输入...';
+        const res = await fetch(apiUrl('/api/v1/workplace/analyze/raw'), {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
           body: JSON.stringify(payload)
         });
         if (!res.ok) throw new Error(await res.text());
-        render(await res.json());
+        const result = await res.json();
+        render(result);
+        status.textContent = '分析完成。';
       } catch (err) {
+        status.textContent = `后端不可用，已显示示例。请在配置里检查 API 地址。错误：${err.message || err}`;
         render(fallback);
       }
     }
 
-    function loadSample() { render(fallback); }
+    function loadSample() {
+      document.getElementById('question').value = '我是不是有背锅风险？哪些关系和隐藏问题需要确认？';
+      document.getElementById('information').value = `组织架构：张伟 - 产品负责人 - Product 团队 - 汇报王强
+组织架构：王强 - 部门经理 - Platform 团队
+组织架构：李娜 - 资深同事 - Product 团队 - 汇报王强
+
+聊天/观察：
+张伟说这个需求先做，不用审批，后面再补流程。
+李娜提醒我，王强之前答应负责验收，但现在又改口说不是他负责。
+张伟和王强私下沟通过，没有同步到项目群。
+王强要求周五必须上线，不然会影响绩效。`;
+      document.getElementById('org').value = JSON.stringify(orgStructureToOrgChart(fallback.org_structure), null, 2);
+      document.getElementById('analysis-status').textContent = '已载入示例。你可以直接改输入后重新分析。';
+      render(fallback);
+    }
 
     function render(data) {
       currentData = data;
       if (data.session_id) currentSessionId = data.session_id;
+      if (currentSessionId) {
+        document.getElementById('session-id-input').value = currentSessionId;
+        saveConfig();
+      }
+      document.getElementById('graph-wrap').classList.remove('has-empty');
+      document.getElementById('empty-graph').style.display = 'none';
+      refreshConfigSummary();
       document.getElementById('summary').textContent = data.summary || '';
       const nodes = data.graph?.nodes || [];
       const edges = data.graph?.edges || [];
@@ -403,8 +680,8 @@
       document.getElementById('view-overview').classList.toggle('active', view === 'overview');
       document.getElementById('view-people').classList.toggle('active', view === 'people');
       document.getElementById('view-org').classList.toggle('active', view === 'org');
-      if (view === 'people') renderPeopleDirectory(currentData || fallback);
-      if (view === 'org') renderOrgStructure((currentData || fallback).org_structure || (currentData || fallback).persistent_org_structure || {});
+      if (view === 'people') renderPeopleDirectory(currentData || {graph: {nodes: [], edges: []}, people: []});
+      if (view === 'org') renderOrgStructure(currentData?.org_structure || currentData?.persistent_org_structure || loadOrgDraft());
     }
 
     function getPeople(data) {
@@ -489,12 +766,12 @@
       selectedPerson = name;
       peopleMode = 'detail';
       setView('people');
-      renderPeopleDirectory(currentData || fallback);
+      renderPeopleDirectory(currentData || {graph: {nodes: [], edges: []}, people: []});
     }
 
     function backToPeopleDirectory() {
       peopleMode = 'directory';
-      renderPeopleDirectory(currentData || fallback);
+      renderPeopleDirectory(currentData || {graph: {nodes: [], edges: []}, people: []});
     }
 
     function renderOrgStructure(orgStructure) {
@@ -573,7 +850,7 @@
 
     function normalizeOrgStructure(org) {
       if (!org || !Object.keys(org).length) {
-        return fallback.org_structure;
+        return emptyOrgStructure();
       }
       const people = org.people || orgStructureToOrgChart(org).map(person => ({
         id: `org_person_${person.name}`,
@@ -651,8 +928,8 @@
         localStorage.setItem(ORG_DRAFT_KEY, JSON.stringify(parsed));
         document.getElementById('org').value = JSON.stringify(orgStructureToOrgChart(parsed), null, 2);
         if (currentData) currentData.org_structure = parsed;
-        if (currentSessionId && location.protocol !== 'file:') {
-          await fetch('/api/v1/org-structure', {
+        if (currentSessionId) {
+          await fetch(apiUrl('/api/v1/org-structure'), {
             method: 'POST',
             headers: {'Content-Type':'application/json'},
             body: JSON.stringify({session_id: currentSessionId, org_structure: parsed}),
@@ -675,6 +952,7 @@
     }
 
     async function importOrgFromImages() {
+      saveConfig();
       const status = document.getElementById('org-import-status');
       const files = Array.from(document.getElementById('org-import-images').files || []);
       const text = document.getElementById('org-import-text').value || '';
@@ -689,13 +967,7 @@
           status.textContent = '请至少上传一张图片或填写补充说明。';
           return;
         }
-        if (location.protocol === 'file:') {
-          const fallbackText = text || '文件模式无法调用 VLM API。请启动后端服务后再导入图片。';
-          document.getElementById('information').value += `\n${fallbackText}`;
-          status.textContent = '当前是 file:// 预览，已把补充说明加入输入框；启动 API 服务后可调用 VLM 导入图片。';
-          return;
-        }
-        const response = await fetch('/api/v1/org-structure/import', {
+        const response = await fetch(apiUrl('/api/v1/org-structure/import'), {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
           body: JSON.stringify({session_id: currentSessionId || undefined, text, images, use_vlm: true}),
@@ -703,6 +975,8 @@
         if (!response.ok) throw new Error(await response.text());
         const payload = await response.json();
         currentSessionId = payload.session_id || currentSessionId;
+        document.getElementById('session-id-input').value = currentSessionId;
+        saveConfig();
         if (!currentData) currentData = {...fallback};
         currentData.session_id = currentSessionId;
         currentData.org_structure = payload.org_structure;
@@ -711,14 +985,73 @@
         renderOrgStructure(payload.org_structure);
         document.getElementById('org-import-status').textContent = `导入完成：${payload.import_summary?.person_count || 0} 人，${payload.import_summary?.department_count || 0} 个部门，${payload.import_summary?.reporting_line_count || 0} 条汇报线。`;
       } catch (err) {
-        status.textContent = `导入失败：${err.message || err}`;
+        status.textContent = `导入失败：${err.message || err}。请检查配置里的 API 地址和后端 VLM Key。`;
       }
     }
 
     function resetOrgDraft() {
       localStorage.removeItem(ORG_DRAFT_KEY);
-      document.getElementById('org').value = JSON.stringify(orgStructureToOrgChart(fallback.org_structure), null, 2);
-      renderOrgStructure((currentData || fallback).org_structure || fallback.org_structure);
+      document.getElementById('org').value = '';
+      if (currentData) currentData.org_structure = emptyOrgStructure();
+      renderOrgStructure(currentData?.org_structure || emptyOrgStructure());
+    }
+
+    async function previewMigration() {
+      saveConfig();
+      const status = document.getElementById('migration-status');
+      const output = document.getElementById('migration-output');
+      status.textContent = '正在预览迁移...';
+      try {
+        const raw = document.getElementById('migration-input').value.trim();
+        if (!raw) {
+          status.textContent = '请先粘贴旧 memory JSON。';
+          return;
+        }
+        const memoryData = JSON.parse(raw);
+        const response = await fetch(apiUrl('/api/v1/memory/migrate'), {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({session_id: currentSessionId || loadConfig().sessionId || undefined, memory_data: memoryData}),
+        });
+        if (!response.ok) throw new Error(await response.text());
+        const payload = await response.json();
+        migratedMemoryData = payload.memory_data;
+        output.value = JSON.stringify(payload.memory_data, null, 2);
+        status.textContent = `迁移预览完成：v${payload.migration?.from_version || 1} → v${payload.migration?.to_version || '?'}，步骤：${(payload.migration?.steps || ['already_current']).join('、')}`;
+      } catch (err) {
+        migratedMemoryData = null;
+        status.textContent = `迁移失败：${err.message || err}`;
+      }
+    }
+
+    async function importMigratedMemory() {
+      saveConfig();
+      const status = document.getElementById('migration-status');
+      try {
+        const memoryData = migratedMemoryData || JSON.parse(document.getElementById('migration-output').value || '{}');
+        if (!memoryData || !Object.keys(memoryData).length) {
+          status.textContent = '请先预览迁移，或在迁移结果框里放入 memory JSON。';
+          return;
+        }
+        const sessionId = ensureSessionId();
+        const response = await fetch(apiUrl('/api/v1/memory/import'), {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({session_id: sessionId, memory_data: memoryData}),
+        });
+        if (!response.ok) throw new Error(await response.text());
+        const payload = await response.json();
+        currentSessionId = payload.session_id || sessionId;
+        refreshConfigSummary();
+        if (memoryData.org_structure) {
+          currentData = currentData || {...fallback};
+          currentData.org_structure = memoryData.org_structure;
+          renderOrgStructure(memoryData.org_structure);
+        }
+        status.textContent = `已导入到 session：${currentSessionId}`;
+      } catch (err) {
+        status.textContent = `导入失败：${err.message || err}`;
+      }
     }
 
     function applySavedOrgDraft() {
@@ -952,9 +1285,10 @@
     function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[s])); }
     function escapeAttr(v) { return String(v ?? '').replace(/[\\'"]/g, '\\$&'); }
     function formatTime(ts) { return ts ? new Date(ts * 1000).toLocaleString('zh-CN') : '未知时间'; }
-    window.addEventListener('resize', () => render(currentData || fallback));
+    window.addEventListener('resize', () => { if (currentData) render(currentData); });
+    initConfig();
     applySavedOrgDraft();
-    render(fallback);
+    if (location.protocol !== 'file:' || loadConfig().apiBase) checkConfig();
   </script>
 </body>
 </html>
