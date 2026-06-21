@@ -211,10 +211,11 @@ Open:
 http://127.0.0.1:8010
 ```
 
-The demo UI provides two main views:
+The demo UI is a workflow-oriented workspace:
 
-- **Analysis Overview**: graph, risks, hidden hypotheses, work network, knowledge frames, and suggested questions.
-- **People Profiles**: a directory of detected people, with click-through dossiers for each person.
+- **Input Workspace**: paste workplace context, import org charts, or migrate old memory exports.
+- **Settings Center**: configure API base, session, memory policy, model providers, model parameters, chat templates, and automatic provider failover.
+- **Results**: relationship graph, risks, hidden hypotheses, work network, organization structure, knowledge frames, and click-through people dossiers.
 
 If you open `apps/workplace_radar.html` directly as a file, it can still show the
 built-in fallback demo. To analyze live input, run the API server above.

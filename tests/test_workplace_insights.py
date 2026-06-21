@@ -2,7 +2,10 @@ import unittest
 
 from workplace_thinker import (
     CURRENT_MEMORY_SCHEMA_VERSION,
+    ModelConfigManager,
+    ModelRouter,
     OrgStructureImporter,
+    ProviderConfig,
     WorkplaceInsightEngine,
     WorkplaceInsightHarness,
     WorkplaceMemoryMigrator,
@@ -169,6 +172,27 @@ class WorkplaceInsightHarnessTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, org["summary"]["reporting_line_count"])
         self.assertTrue(result["import_summary"]["vlm_used"])
 
+    async def test_model_router_fails_over_to_next_provider(self):
+        manager = ModelConfigManager()
+        manager.providers = [
+            ProviderConfig(id="bad", label="Bad", api_key="bad-key", priority=1, supports_vision=False),
+            ProviderConfig(id="good", label="Good", api_key="good-key", priority=2, supports_vision=False),
+        ]
+        router = ModelRouter(manager)
+        calls = []
+
+        async def fake_call(provider, *, messages, images, vision):
+            calls.append(provider.id)
+            if provider.id == "bad":
+                raise RuntimeError("provider down")
+            return "ok"
+
+        router._call_provider = fake_call
+        result = await router.generate_text("hello")
+        self.assertEqual("ok", result)
+        self.assertEqual(["bad", "good"], calls)
+        self.assertEqual("good", manager.last_failover["used_provider"])
+
     async def test_memory_migration_preserves_legacy_org_chart(self):
         legacy_memory = {
             "session_id": "legacy_session",
@@ -223,6 +247,39 @@ class WorkplaceInsightAPITest(unittest.TestCase):
         self.assertTrue(payload["capabilities"]["org_import"])
         self.assertTrue(payload["capabilities"]["memory_migration"])
         self.assertIn("vlm_configured", payload["runtime"])
+        self.assertIn("model_settings", payload["runtime"])
+
+    @unittest.skipIf(TestClient is None or app is None, "fastapi is not installed")
+    def test_api_model_settings_endpoint(self):
+        client = TestClient(app)
+        response = client.get("/api/v1/settings/model")
+        self.assertEqual(200, response.status_code)
+        payload = response.json()
+        self.assertTrue(payload["settings"]["providers"])
+        self.assertTrue(payload["settings"]["templates"])
+
+        updated = client.put(
+            "/api/v1/settings/model",
+            json={
+                "auto_failover": False,
+                "active_template_id": "workplace_politics",
+                "providers": [
+                    {
+                        "id": "openai",
+                        "enabled": True,
+                        "priority": 7,
+                        "chat_model": "gpt-4o-mini",
+                        "vision_model": "gpt-4o-mini",
+                    }
+                ],
+            },
+        )
+        self.assertEqual(200, updated.status_code)
+        settings = updated.json()["settings"]
+        self.assertFalse(settings["auto_failover"])
+        self.assertEqual("workplace_politics", settings["active_template_id"])
+        openai_provider = [p for p in settings["providers"] if p["id"] == "openai"][0]
+        self.assertEqual(7, openai_provider["priority"])
 
     @unittest.skipIf(TestClient is None or app is None, "fastapi is not installed")
     def test_api_raw_analyze_endpoint(self):

@@ -13,6 +13,7 @@ from .migrations import (
     CURRENT_ORG_STRUCTURE_SCHEMA_VERSION,
     WorkplaceMemoryMigrator,
 )
+from .model_config import ModelConfigManager, ModelRouter, ProviderConfig
 from .org_importer import OrgStructureImporter
 from .conversation_engine import (
     ConversationEngine,
@@ -29,6 +30,9 @@ __all__ = [
     "WorkplaceInsightHarness",
     "WorkplaceMemoryEngine",
     "WorkplaceMemoryMigrator",
+    "ModelConfigManager",
+    "ModelRouter",
+    "ProviderConfig",
     "CURRENT_MEMORY_SCHEMA_VERSION",
     "CURRENT_ORG_STRUCTURE_SCHEMA_VERSION",
     "OrgStructureImporter",

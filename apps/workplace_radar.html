@@ -138,6 +138,26 @@
       padding: 12px;
       margin: 12px 0;
     }
+    .settings-grid { display: grid; gap: 10px; }
+    .provider-row {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: var(--surface);
+      display: grid;
+      gap: 8px;
+    }
+    .provider-row-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .provider-fields { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+    select, input[type="number"] {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: var(--surface);
+      color: var(--ink);
+      outline: none;
+    }
     .check-row { display:flex; align-items:center; gap:8px; margin:8px 0; color:var(--muted); font-size:12px; }
     .check-row input { width:auto; }
     .empty-graph {
@@ -251,6 +271,7 @@
           "panel";
       }
       .controls { grid-template-columns: 1fr; }
+      .provider-fields { grid-template-columns: 1fr; }
       .brand { display: block; }
       .graph-wrap { position: relative; height: 560px; inset: auto; }
       .side { max-height: none; }
@@ -307,13 +328,32 @@
           </div>
           <div id="settings-panel" class="settings-panel" style="display:none;">
             <strong>运行配置</strong>
-            <label>API 地址</label>
-            <input id="api-base" type="url" placeholder="http://127.0.0.1:8000" />
-            <label>Session ID</label>
-            <input id="session-id-input" type="text" placeholder="留空自动创建；填入可继续旧 session" />
-            <label class="check-row"><input id="cfg-use-memory" type="checkbox" checked /> 使用长期记忆</label>
-            <label class="check-row"><input id="cfg-save-memory" type="checkbox" checked /> 分析结果写入记忆</label>
-            <label class="check-row"><input id="cfg-use-llm" type="checkbox" /> 使用 LLM 增强分析</label>
+            <div class="settings-grid">
+              <div class="provider-row">
+                <strong>连接</strong>
+                <label>API 地址</label>
+                <input id="api-base" type="url" placeholder="http://127.0.0.1:8000" />
+                <label>Session ID</label>
+                <input id="session-id-input" type="text" placeholder="留空自动创建；填入可继续旧 session" />
+                <label class="check-row"><input id="cfg-use-memory" type="checkbox" checked /> 使用长期记忆</label>
+                <label class="check-row"><input id="cfg-save-memory" type="checkbox" checked /> 分析结果写入记忆</label>
+                <label class="check-row"><input id="cfg-use-llm" type="checkbox" /> 使用 LLM 增强分析</label>
+              </div>
+              <div class="provider-row">
+                <div class="provider-row-head">
+                  <strong>模型路由</strong>
+                  <span id="failover-status" class="status-pill">自动切换</span>
+                </div>
+                <label class="check-row"><input id="model-auto-failover" type="checkbox" checked /> API 不可用时自动切换到下一个 provider</label>
+                <label>聊天模板</label>
+                <select id="model-template"></select>
+                <div id="provider-list"></div>
+                <div class="quick-row">
+                  <button onclick="loadModelSettings()">刷新模型设置</button>
+                  <button class="primary" onclick="saveModelSettings()">保存模型设置</button>
+                </div>
+              </div>
+            </div>
             <p id="runtime-status" class="small">VLM Key 在后端环境变量配置：VLM_API_KEY 或 OPENAI_API_KEY。</p>
           </div>
           <div id="migration-panel" class="settings-panel" style="display:none;">
@@ -414,6 +454,7 @@
     const ORG_DRAFT_KEY = 'workplace_thinker_org_structure_draft';
     const CONFIG_KEY = 'workplace_thinker_runtime_config';
     let migratedMemoryData = null;
+    let modelSettings = null;
 
     function defaultApiBase() {
       return location.protocol === 'file:' ? 'http://127.0.0.1:8000' : '';
@@ -488,6 +529,7 @@
     function toggleSettings(forceOpen = false) {
       const panel = document.getElementById('settings-panel');
       panel.style.display = forceOpen || panel.style.display === 'none' ? 'block' : 'none';
+      if (panel.style.display === 'block' && !modelSettings) loadModelSettings();
     }
 
     function openMigrationPanel() {
@@ -520,12 +562,103 @@
         const config = await response.json();
         status.textContent = '已连接';
         status.className = 'status-pill ok';
-        runtime.textContent = `后端已连接 · VLM：${config.runtime?.vlm_configured ? '已配置' : '未配置'} · 模型：${config.runtime?.vlm_model || '未标注'}`;
+        if (config.runtime?.model_settings) {
+          modelSettings = config.runtime.model_settings;
+          renderModelSettings(modelSettings);
+        }
+        const enabledProviders = (modelSettings?.providers || []).filter(p => p.enabled && p.configured).map(p => p.label).join(' / ') || '未配置';
+        runtime.textContent = `后端已连接 · 可用 provider：${enabledProviders}`;
         document.getElementById('analysis-status').textContent = '后端服务已连接，可以分析真实输入。';
       } catch (err) {
         status.textContent = '未连接';
         status.className = 'status-pill warn';
         runtime.textContent = `未连上后端：${err.message || err}。如果从文件打开，请确认 API 地址，例如 http://127.0.0.1:8000。`;
+      }
+    }
+
+    async function loadModelSettings() {
+      const runtime = document.getElementById('runtime-status');
+      try {
+        const response = await fetch(apiUrl('/api/v1/settings/model'));
+        if (!response.ok) throw new Error(await response.text());
+        const payload = await response.json();
+        modelSettings = payload.settings;
+        renderModelSettings(modelSettings);
+        runtime.textContent = '模型设置已刷新。';
+      } catch (err) {
+        runtime.textContent = `模型设置读取失败：${err.message || err}`;
+      }
+    }
+
+    function renderModelSettings(settings) {
+      if (!settings) return;
+      const templateSelect = document.getElementById('model-template');
+      templateSelect.innerHTML = (settings.templates || []).map(template => `
+        <option value="${escapeAttr(template.id)}" ${template.id === settings.active_template_id ? 'selected' : ''}>${escapeHtml(template.label)}</option>
+      `).join('');
+      document.getElementById('model-auto-failover').checked = settings.auto_failover !== false;
+      const last = settings.last_failover || {};
+      document.getElementById('failover-status').textContent = last.used_provider ? `最近使用：${last.used_provider}` : '自动切换';
+      document.getElementById('provider-list').innerHTML = (settings.providers || []).map(provider => `
+        <div class="provider-row" data-provider-id="${escapeAttr(provider.id)}">
+          <div class="provider-row-head">
+            <strong>${escapeHtml(provider.label || provider.id)}</strong>
+            <span class="status-pill ${provider.configured ? 'ok' : 'warn'}">${provider.configured ? '已配置' : '缺少 Key'}</span>
+          </div>
+          <label class="check-row"><input class="provider-enabled" type="checkbox" ${provider.enabled ? 'checked' : ''} /> 启用</label>
+          <div class="provider-fields">
+            <label>优先级<input class="provider-priority" type="number" value="${Number(provider.priority || 10)}" /></label>
+            <label>超时秒数<input class="provider-timeout" type="number" value="${Number(provider.timeout_seconds || 45)}" /></label>
+            <label>Base URL<input class="provider-base-url" type="url" value="${escapeAttr(provider.base_url || '')}" /></label>
+            <label>Key 环境变量<input class="provider-key-env" type="text" value="${escapeAttr(provider.api_key_env || '')}" /></label>
+            <label>聊天模型<input class="provider-chat-model" type="text" value="${escapeAttr(provider.chat_model || '')}" /></label>
+            <label>视觉模型<input class="provider-vision-model" type="text" value="${escapeAttr(provider.vision_model || '')}" /></label>
+            <label>温度<input class="provider-temperature" type="number" step="0.1" value="${Number(provider.temperature ?? 0.2)}" /></label>
+            <label>Max tokens<input class="provider-max-tokens" type="number" value="${Number(provider.max_tokens || 2048)}" /></label>
+          </div>
+          <label class="check-row"><input class="provider-supports-chat" type="checkbox" ${provider.supports_chat ? 'checked' : ''} /> 支持聊天</label>
+          <label class="check-row"><input class="provider-supports-vision" type="checkbox" ${provider.supports_vision ? 'checked' : ''} /> 支持图片/VLM</label>
+        </div>
+      `).join('');
+    }
+
+    function collectModelSettings() {
+      const providers = Array.from(document.querySelectorAll('[data-provider-id]')).map(row => ({
+        id: row.dataset.providerId,
+        enabled: row.querySelector('.provider-enabled').checked,
+        priority: Number(row.querySelector('.provider-priority').value || 10),
+        timeout_seconds: Number(row.querySelector('.provider-timeout').value || 45),
+        base_url: row.querySelector('.provider-base-url').value.trim(),
+        api_key_env: row.querySelector('.provider-key-env').value.trim(),
+        chat_model: row.querySelector('.provider-chat-model').value.trim(),
+        vision_model: row.querySelector('.provider-vision-model').value.trim(),
+        temperature: Number(row.querySelector('.provider-temperature').value || 0.2),
+        max_tokens: Number(row.querySelector('.provider-max-tokens').value || 2048),
+        supports_chat: row.querySelector('.provider-supports-chat').checked,
+        supports_vision: row.querySelector('.provider-supports-vision').checked,
+      }));
+      return {
+        providers,
+        active_template_id: document.getElementById('model-template').value,
+        auto_failover: document.getElementById('model-auto-failover').checked,
+      };
+    }
+
+    async function saveModelSettings() {
+      const runtime = document.getElementById('runtime-status');
+      try {
+        const response = await fetch(apiUrl('/api/v1/settings/model'), {
+          method: 'PUT',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(collectModelSettings()),
+        });
+        if (!response.ok) throw new Error(await response.text());
+        const payload = await response.json();
+        modelSettings = payload.settings;
+        renderModelSettings(modelSettings);
+        runtime.textContent = '模型设置已保存。新的分析和图片导入会使用这套路由。';
+      } catch (err) {
+        runtime.textContent = `模型设置保存失败：${err.message || err}`;
       }
     }
 

@@ -8,7 +8,6 @@ Enhanced with Memory System for continuous learning and pattern recognition.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import uuid
@@ -19,6 +18,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from .harness import WorkplaceInsightHarness
+from .model_config import runtime_model_config, runtime_model_router
 
 
 # === 会话管理 ===
@@ -28,15 +28,25 @@ active_sessions: Dict[str, WorkplaceInsightHarness] = {}
 def get_or_create_session(session_id: Optional[str] = None) -> tuple[str, WorkplaceInsightHarness]:
     """获取现有会话或创建新会话"""
     if session_id and session_id in active_sessions:
-        return session_id, active_sessions[session_id]
+        harness = active_sessions[session_id]
+        apply_model_router(harness)
+        return session_id, harness
     
     new_id = session_id or f"session_{uuid.uuid4().hex[:8]}"
     harness = WorkplaceInsightHarness(
+        llm_func=runtime_model_router.generate_text,
+        vlm_func=runtime_model_router.generate_vision,
         session_id=new_id,
         enable_memory=True
     )
     active_sessions[new_id] = harness
     return new_id, harness
+
+
+def apply_model_router(harness: WorkplaceInsightHarness) -> None:
+    """Attach the current runtime model router to an existing harness."""
+    harness.engine.llm_func = runtime_model_router.generate_text
+    harness.org_importer.vlm_func = runtime_model_router.generate_vision
 
 
 # === 请求模型 ===
@@ -94,6 +104,13 @@ class FeedbackRequest(BaseModel):
     action: str
     user_note: str = ""
 
+
+class ModelSettingsUpdateRequest(BaseModel):
+    providers: List[Dict[str, Any]] = Field(default_factory=list)
+    templates: List[Dict[str, Any]] = Field(default_factory=list)
+    active_template_id: Optional[str] = None
+    auto_failover: Optional[bool] = None
+
 # === 应用初始化 ===
 app = FastAPI(
     title="WorkplaceThinker",
@@ -121,6 +138,7 @@ async def workplace_radar_home() -> str:
 @app.get("/api/v1/config")
 async def get_runtime_config() -> Dict[str, Any]:
     """Return safe runtime capabilities for the browser UI."""
+    vision_providers = runtime_model_config.ordered_providers(vision=True)
     return {
         "app": "WorkplaceThinker",
         "api_version": app.version,
@@ -133,10 +151,26 @@ async def get_runtime_config() -> Dict[str, Any]:
             "vlm_import": True,
         },
         "runtime": {
-            "vlm_configured": bool(os.getenv("VLM_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("LLM_BINDING_API_KEY")),
-            "vlm_model": os.getenv("VLM_MODEL") or "gpt-4o-mini",
+            "vlm_configured": bool(vision_providers),
+            "vlm_model": vision_providers[0].vision_model if vision_providers else "",
+            "model_settings": runtime_model_config.safe_dict(),
         },
     }
+
+
+@app.get("/api/v1/settings/model")
+async def get_model_settings() -> Dict[str, Any]:
+    """Return safe model/provider settings for the UI."""
+    return {"settings": runtime_model_config.safe_dict()}
+
+
+@app.put("/api/v1/settings/model")
+async def update_model_settings(request: ModelSettingsUpdateRequest) -> Dict[str, Any]:
+    """Update runtime model/provider settings."""
+    settings = runtime_model_config.update(request.model_dump(exclude_none=True))
+    for harness in active_sessions.values():
+        apply_model_router(harness)
+    return {"settings": settings, "success": True}
 
 
 @app.post("/api/v1/workplace/analyze")
