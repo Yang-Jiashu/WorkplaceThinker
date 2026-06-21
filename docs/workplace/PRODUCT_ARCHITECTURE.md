@@ -6,6 +6,8 @@ WorkplaceThinker turns messy workplace context into an evidence-grounded graph:
 
 - who is involved;
 - who formally reports to whom;
+- what the stable organization structure looks like: departments, roles, people,
+  and reporting lines;
 - who collaborates, supports, blocks, commits, or changes stance;
 - where unclear ownership, private decision loops, process bypass, pressure, or
   credit/blame risk may exist.
@@ -103,6 +105,21 @@ Risk signals and hidden hypotheses are first-class graph nodes, not just side
 panel text. This lets users see which people and observed relationships connect
 to each possible problem.
 
+## Organization Structure Module
+
+Organization structure is separated from conversational relationship inference.
+It stores relatively stable facts:
+
+- departments / teams;
+- people, titles, and department membership;
+- formal reporting lines;
+- department tree and person reporting tree;
+- editable JSON that can be saved into session memory and reused in future
+  analysis.
+
+This keeps "who officially reports to whom" distinct from softer signals like
+support, blocking, sponsorship, or shadow decision chains.
+
 ## Output Contract
 
 Every response contains:
@@ -110,6 +127,7 @@ Every response contains:
 - `summary`
 - `graph.nodes`
 - `graph.edges`
+- `org_structure`
 - `risks`
 - `hidden_hypotheses`
 - `org_dynamics_signals`

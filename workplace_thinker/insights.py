@@ -327,7 +327,19 @@ class WorkplaceInsightEngine:
         use_memory: bool = True,
         save_to_memory: bool = True,
     ) -> Dict[str, Any]:
-        org_people = [OrgPerson(**{k: v for k, v in item.items() if k in {"name", "title", "team", "manager", "metadata"}}) for item in org_chart if item.get("name")]
+        org_people = []
+        for item in org_chart:
+            if not item.get("name"):
+                continue
+            org_people.append(
+                OrgPerson(
+                    name=str(item.get("name") or "").strip(),
+                    title=str(item.get("title") or item.get("role") or "").strip(),
+                    team=str(item.get("team") or item.get("department") or item.get("dept") or "").strip(),
+                    manager=str(item.get("manager") or item.get("reports_to") or "").strip(),
+                    metadata=dict(item.get("metadata") or {}),
+                )
+            )
         org_names = [p.name for p in org_people]
         evidence = self._collect_evidence(chat_messages, uploaded_texts, org_names=org_names)
         
@@ -438,7 +450,7 @@ class WorkplaceInsightEngine:
         }
 
     def _parse_org_line(self, line: str) -> Optional[Dict[str, Any]]:
-        if not any(token in line for token in ("组织", "架构", "汇报", "上级", "manager", "Manager", "团队", "team", "Team", "title", "岗位", "角色", "负责人", "reports to", "Reports to")):
+        if not any(token in line for token in ("组织", "架构", "汇报", "上级", "manager", "Manager", "团队", "部门", "department", "Department", "team", "Team", "title", "岗位", "角色", "负责人", "reports to", "Reports to")):
             return None
         body = re.sub(r"^\s*(?:组织架构|组织|人员|成员|org\s*chart|org)[:：]?\s*", "", line, flags=re.I).strip()
         if not body:
@@ -477,13 +489,17 @@ class WorkplaceInsightEngine:
 
         team = ""
         for part in parts:
-            if "团队" in part or "team" in part.lower():
-                candidate = re.sub(r"(?i)团队|team", "", part).strip(" ：:=_-—")
+            if "团队" in part or "部门" in part or "team" in part.lower() or "department" in part.lower():
+                candidate = re.sub(r"(?i)团队|部门|team|department", "", part).strip(" ：:=_-—")
+                if candidate in {"经理", "负责人", "主管", "总监", "员工", "同事"}:
+                    continue
+                if part.endswith(("经理", "负责人", "主管", "总监")) and not any(token in part.lower() for token in ("team", "department")) and "团队" not in part:
+                    continue
                 if candidate and name not in candidate:
                     team = candidate
                     break
         if not team:
-            team_match = re.search(r"(?:团队|team)[:：=]\s*([^,，;；|\\-—]+)", line, flags=re.I)
+            team_match = re.search(r"(?:团队|部门|team|department)[:：=]\s*([^,，;；|\\-—]+)", line, flags=re.I)
             if team_match:
                 team = team_match.group(1).strip()
         return {"name": name, "title": title, "team": team, "manager": manager}
@@ -764,6 +780,7 @@ class WorkplaceInsightEngine:
             p_node["behavioral_style"] = detect_behavioral_style(p_node["label"], risks, edges)
         behavior_observations = infer_behavior_observations(person_nodes, edges, risks)
         knowledge_context = build_knowledge_context(risks, work_items, behavior_observations, jargon_signals, org_dynamics_signals)
+        org_structure = self._build_org_structure(org_people, person_nodes, edges)
         evidence_event_summary = self._summarize_evidence_events(evidence)
         org_dynamics_patterns = self._build_org_dynamics_patterns(org_dynamics_signals, evidence, memory_context)
         responsibility_chain = self._build_responsibility_chain(work_relationships, org_dynamics_signals, risks, work_items)
@@ -782,6 +799,7 @@ class WorkplaceInsightEngine:
             "graph": augmented_graph,
             "people": person_nodes,
             "relationships": edges,
+            "org_structure": org_structure,
             "work_graph": {
                 "nodes": work_items,
                 "edges": work_relationships,
@@ -814,6 +832,8 @@ class WorkplaceInsightEngine:
                 "llm_used": False,
                 "evidence_count": len(evidence),
                 "org_people_count": len(org_people),
+                "org_department_count": len(org_structure.get("departments", [])),
+                "org_reporting_line_count": len(org_structure.get("reporting_lines", [])),
                 "memory_used": memory_context is not None,
                 "uncertainty_count": len(uncertainty_checklist),
                 "work_object_count": len(work_items),
@@ -940,6 +960,178 @@ class WorkplaceInsightEngine:
                 )
 
         return {"nodes": nodes + risk_nodes + hyp_nodes, "edges": edges}
+
+    def _build_org_structure(
+        self,
+        org_people: Sequence[OrgPerson],
+        people_nodes: Sequence[Dict[str, Any]],
+        relation_edges: Sequence[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        people_by_name: Dict[str, Dict[str, Any]] = {}
+        for person in org_people:
+            name = person.name.strip()
+            if not name:
+                continue
+            people_by_name[name] = {
+                "id": stable_id("org_person", name),
+                "name": name,
+                "title": person.title,
+                "department": person.team or "未标注部门",
+                "manager": person.manager,
+                "manager_id": stable_id("org_person", person.manager) if person.manager else "",
+                "source": "org_chart",
+                "metadata": person.metadata,
+            }
+
+        for node in people_nodes:
+            name = str(node.get("label") or node.get("name") or "").strip()
+            if not name or name in people_by_name:
+                continue
+            people_by_name[name] = {
+                "id": stable_id("org_person", name),
+                "name": name,
+                "title": str(node.get("title") or ""),
+                "department": str(node.get("team") or "未标注部门"),
+                "manager": str(node.get("manager") or ""),
+                "manager_id": stable_id("org_person", str(node.get("manager"))) if node.get("manager") else "",
+                "source": "mentioned_person",
+                "metadata": {},
+            }
+
+        for person in list(people_by_name.values()):
+            manager = str(person.get("manager") or "").strip()
+            if manager and manager not in people_by_name:
+                people_by_name[manager] = {
+                    "id": stable_id("org_person", manager),
+                    "name": manager,
+                    "title": "",
+                    "department": "未标注部门",
+                    "manager": "",
+                    "manager_id": "",
+                    "source": "manager_reference",
+                    "metadata": {},
+                }
+
+        people = sorted(people_by_name.values(), key=lambda item: (item["department"], item["name"]))
+        department_map: Dict[str, Dict[str, Any]] = {}
+        for person in people:
+            department = str(person.get("department") or "未标注部门")
+            dept = department_map.setdefault(
+                department,
+                {
+                    "id": stable_id("dept", department),
+                    "name": department,
+                    "parent_id": "",
+                    "people": [],
+                    "people_count": 0,
+                    "manager_names": [],
+                },
+            )
+            dept["people"].append(person["name"])
+            dept["people_count"] += 1
+            if person.get("manager") and person["manager"] not in dept["manager_names"]:
+                dept["manager_names"].append(person["manager"])
+
+        departments = sorted(department_map.values(), key=lambda item: item["name"])
+        department_tree = [
+            {
+                "id": dept["id"],
+                "name": dept["name"],
+                "people_count": dept["people_count"],
+                "people": dept["people"],
+                "children": [],
+            }
+            for dept in departments
+        ]
+
+        reporting_lines: List[Dict[str, Any]] = []
+        seen_reporting = set()
+        for person in people:
+            manager = str(person.get("manager") or "").strip()
+            if not manager:
+                continue
+            key = (person["name"], manager)
+            if key in seen_reporting:
+                continue
+            seen_reporting.add(key)
+            reporting_lines.append(
+                {
+                    "id": stable_id("org_line", f"{person['name']}->{manager}"),
+                    "source": person["id"],
+                    "target": stable_id("org_person", manager),
+                    "source_name": person["name"],
+                    "target_name": manager,
+                    "type": "formal_reports_to",
+                    "label": "正式汇报线",
+                    "status": "stored_org_structure",
+                }
+            )
+
+        children_by_manager: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for person in people:
+            manager = str(person.get("manager") or "").strip()
+            if manager:
+                children_by_manager[manager].append(person)
+
+        def build_person_tree(person: Dict[str, Any], seen: Optional[set[str]] = None) -> Dict[str, Any]:
+            seen = set(seen or set())
+            name = str(person.get("name") or "")
+            if name in seen:
+                return {
+                    "id": person["id"],
+                    "name": name,
+                    "title": person.get("title", ""),
+                    "department": person.get("department", ""),
+                    "children": [],
+                    "cycle_detected": True,
+                }
+            seen.add(name)
+            children = [
+                build_person_tree(child, seen)
+                for child in sorted(children_by_manager.get(name, []), key=lambda item: item["name"])
+                if child.get("name") != name
+            ]
+            return {
+                "id": person["id"],
+                "name": name,
+                "title": person.get("title", ""),
+                "department": person.get("department", ""),
+                "children": children,
+            }
+
+        child_names = {line["source_name"] for line in reporting_lines}
+        roots = [
+            person for person in people
+            if not person.get("manager") or person["name"] not in child_names or person.get("manager") not in people_by_name
+        ]
+        if not roots and people:
+            roots = people[:1]
+        reporting_tree = [build_person_tree(person) for person in sorted(roots, key=lambda item: item["name"])]
+
+        return {
+            "departments": departments,
+            "people": people,
+            "reporting_lines": reporting_lines,
+            "department_tree": department_tree,
+            "reporting_tree": reporting_tree,
+            "summary": {
+                "department_count": len(departments),
+                "person_count": len(people),
+                "reporting_line_count": len(reporting_lines),
+                "root_count": len(reporting_tree),
+                "unassigned_people_count": sum(1 for person in people if person.get("department") == "未标注部门"),
+            },
+            "editable_schema": {
+                "person_fields": ["name", "title", "department", "manager"],
+                "department_fields": ["name", "parent_id"],
+                "line_fields": ["source_name", "target_name", "type"],
+            },
+            "storage": {
+                "scope": "session_memory",
+                "status": "ready_to_store",
+                "editable": True,
+            },
+        }
 
     def _summarize_evidence_events(self, evidence: Sequence[Evidence]) -> Dict[str, Any]:
         visibility = Counter(item.visibility or "unknown" for item in evidence)

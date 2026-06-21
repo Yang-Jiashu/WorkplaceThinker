@@ -31,6 +31,9 @@ class WorkplaceInsightEngineTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(node["label"] == "张伟" for node in result["graph"]["nodes"]))
         self.assertTrue(any(node["type"] == "risk_signal" for node in result["graph"]["nodes"]))
         self.assertIn("work_graph", result)
+        self.assertIn("org_structure", result)
+        self.assertEqual(2, result["org_structure"]["summary"]["department_count"])
+        self.assertGreaterEqual(result["org_structure"]["summary"]["reporting_line_count"], 2)
         self.assertIn("knowledge_context", result)
         self.assertTrue(any(node["type"] == "work_object" for node in result["graph"]["nodes"]))
 
@@ -50,6 +53,8 @@ class WorkplaceInsightHarnessTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("control_harness", result["harness"]["layers"])
         self.assertEqual("raw_information", result["meta"]["input_mode"])
         self.assertTrue(result["graph_view"]["legend"])
+        self.assertIn("org_structure", result)
+        self.assertTrue(result["org_structure"]["reporting_tree"])
         self.assertGreaterEqual(result["graph_view"]["high_risk_count"], 1)
         self.assertFalse(result["control_manifest"]["memory_policy"]["persist_unconfirmed_hypotheses"])
         self.assertTrue(result["control_manifest"]["actions"])
@@ -170,6 +175,32 @@ class WorkplaceInsightAPITest(unittest.TestCase):
         self.assertTrue(payload["risks"])
         self.assertIn("control_manifest", payload)
         self.assertIn("person_histories", payload)
+        self.assertIn("org_structure", payload)
+
+    @unittest.skipIf(TestClient is None or app is None, "fastapi is not installed")
+    def test_api_org_structure_endpoints(self):
+        client = TestClient(app)
+        response = client.post(
+            "/api/v1/org-structure",
+            json={
+                "session_id": "org_test_session",
+                "org_structure": {
+                    "departments": [{"id": "dept_product", "name": "Product", "people_count": 1}],
+                    "people": [{"id": "p1", "name": "张伟", "title": "产品负责人", "department": "Product", "manager": "王强"}],
+                    "reporting_lines": [{"source_name": "张伟", "target_name": "王强", "type": "formal_reports_to"}],
+                    "department_tree": [],
+                    "reporting_tree": [],
+                    "summary": {"department_count": 1, "person_count": 1, "reporting_line_count": 1},
+                },
+            },
+        )
+        self.assertEqual(200, response.status_code)
+        payload = response.json()
+        self.assertTrue(payload["success"])
+        get_response = client.get("/api/v1/org-structure/org_test_session")
+        self.assertEqual(200, get_response.status_code)
+        org_payload = get_response.json()["org_structure"]
+        self.assertEqual("Product", org_payload["departments"][0]["name"])
 
     @unittest.skipIf(TestClient is None or app is None, "fastapi is not installed")
     def test_home_serves_graph_ui(self):

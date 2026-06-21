@@ -317,6 +317,7 @@ class WorkplaceInsightHarness:
             result["memory_stats"] = self.memory.get_stats()
             # 自动添加当前完整图谱
             result["persistent_graph"] = self.memory.get_current_graph()
+            result["persistent_org_structure"] = self.memory.get_org_structure()
             # 添加时间线
             result["graph_timeline"] = self.memory.get_graph_timeline()
         
@@ -495,6 +496,18 @@ class WorkplaceInsightHarness:
                     "risk_signals": profile.risk_signals,
                     "evidence_snippets": profile.evidence_snippets[-10:],
                 }
+        return None
+
+    def get_org_structure(self) -> Optional[Dict[str, Any]]:
+        """获取当前 session 的组织架构。"""
+        if self.enable_memory and self.memory:
+            return self.memory.get_org_structure()
+        return None
+
+    def update_org_structure(self, org_structure: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """更新当前 session 的组织架构。"""
+        if self.enable_memory and self.memory:
+            return self.memory.update_org_structure(org_structure)
         return None
     
     async def record_user_feedback(self, feedback: Dict[str, Any]) -> bool:

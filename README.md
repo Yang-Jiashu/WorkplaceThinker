@@ -11,6 +11,7 @@ notes, org lines, project context, or uploaded text; WorkplaceThinker turns the
 mess into auditable workplace maps:
 
 - a **people network**: who reports to whom, who supports, blocks, commits, or changes stance;
+- an **organization structure module**: a dedicated place to view, edit, record, and store departments, roles, people, and formal reporting lines;
 - a **work network**: projects, tasks, decisions, owners, approvals, deliverables, deadlines, and acceptance signals;
 - a **person profile explorer**: a Tianyancha-style directory for people mentioned in the case;
 - a **risk and hypothesis graph**: evidence-backed risks and clearly marked hypotheses;
@@ -57,6 +58,20 @@ payload is required for the main path.
 WorkplaceThinker extracts people, formal reporting lines, collaboration,
 support, challenge, commitment, and risk involvement. Each relation keeps the
 evidence ids that caused it to appear.
+
+### Organization Structure Module
+
+The demo includes a dedicated **Organization Structure** tab for relatively
+stable organization facts:
+
+- departments / teams;
+- people, titles, departments;
+- formal reporting lines;
+- department tree and person reporting tree;
+- editable JSON drafts that can be reused in the next analysis.
+
+The backend returns `org_structure`, stores it in session memory, and exposes
+`GET /api/v1/org-structure/{session_id}` plus `POST /api/v1/org-structure`.
 
 ### Work Network
 
@@ -260,6 +275,7 @@ graph
 graph_view
 people
 person_histories
+org_structure
 work_graph
 relationships
 risks
@@ -293,6 +309,7 @@ Important fields:
 | Field | Meaning |
 | --- | --- |
 | `person_histories` | Per-person dossier with current evidence, risks, relations, work links, jargon signals, memory profile, and historical summaries. |
+| `org_structure` | Dedicated organization module with departments, people, titles, formal reporting lines, department tree, and reporting tree. |
 | `work_graph` | Work-object nodes and person-to-work edges. |
 | `behavior_observations` | Evidence-backed behavior signals, explicitly not personality labels. |
 | `jargon_signals` | Matched workplace jargon with normalized meanings and safe confirmation questions. |

@@ -90,7 +90,7 @@
     .hyp { border-color: #d8c4d5; background: #fbf4fa; }
     .chip { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; font-size: 11px; color: var(--muted); margin: 3px 4px 0 0; }
     .small { font-size: 12px; color: var(--muted); }
-    .tabs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 16px 0 18px; }
+    .tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 16px 0 18px; }
     .tab {
       border-radius: 8px;
       padding: 10px 12px;
@@ -110,6 +110,9 @@
     .person-card-grid { display: grid; gap: 10px; }
     .person-detail { margin-top: 10px; }
     .back-row { margin-bottom: 12px; }
+    .org-tree { display: grid; gap: 8px; margin-top: 10px; }
+    .org-node { border-left: 3px solid var(--lake); padding-left: 10px; margin: 6px 0 6px 10px; }
+    .org-editor { min-height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
     @media (max-width: 1100px) {
       .shell { grid-template-columns: 1fr; }
       aside, main { border-right: 0; border-bottom: 1px solid var(--line); }
@@ -176,6 +179,7 @@
       <div class="tabs">
         <button id="tab-overview" class="tab active" onclick="setView('overview')">分析总览</button>
         <button id="tab-people" class="tab" onclick="setView('people')">人物档案</button>
+        <button id="tab-org" class="tab" onclick="setView('org')">组织架构</button>
       </div>
       <div id="view-overview" class="view active">
         <h3>总结</h3>
@@ -209,6 +213,9 @@
         <div id="people-directory"></div>
         <div id="person-detail"></div>
       </div>
+      <div id="view-org" class="view">
+        <div id="org-structure"></div>
+      </div>
     </section>
   </div>
   <script>
@@ -216,6 +223,8 @@
     let selectedPerson = '';
     let activeView = 'overview';
     let peopleMode = 'directory';
+    let currentSessionId = '';
+    const ORG_DRAFT_KEY = 'workplace_thinker_org_structure_draft';
 
     const fallback = {
       summary: "识别到 3 个相关人物、5 条关系边。主要风险：流程绕过、信息不对称、责任边界不清。所有隐藏问题均以假设呈现，需要回到证据和确认问题验证。",
@@ -237,6 +246,33 @@
           {source:"risk_1", target:"hyp_1", type:"supports_hypothesis", label:"支持假设", score:.66, hypothesis:true},
           {source:"risk_2", target:"hyp_1", type:"supports_hypothesis", label:"支持假设", score:.66, hypothesis:true}
         ]
+      },
+      org_structure: {
+        departments: [
+          {id:"dept_product", name:"Product", parent_id:"", people:["张伟","李娜"], people_count:2, manager_names:["王强"]},
+          {id:"dept_platform", name:"Platform", parent_id:"", people:["王强"], people_count:1, manager_names:[]}
+        ],
+        people: [
+          {id:"org_person_zhang", name:"张伟", title:"产品负责人", department:"Product", manager:"王强", manager_id:"org_person_wang", source:"org_chart"},
+          {id:"org_person_wang", name:"王强", title:"部门经理", department:"Platform", manager:"", manager_id:"", source:"org_chart"},
+          {id:"org_person_li", name:"李娜", title:"资深同事", department:"Product", manager:"王强", manager_id:"org_person_wang", source:"org_chart"}
+        ],
+        reporting_lines: [
+          {id:"org_line_1", source_name:"张伟", target_name:"王强", type:"formal_reports_to", label:"正式汇报线"},
+          {id:"org_line_2", source_name:"李娜", target_name:"王强", type:"formal_reports_to", label:"正式汇报线"}
+        ],
+        department_tree: [
+          {id:"dept_product", name:"Product", people_count:2, people:["张伟","李娜"], children:[]},
+          {id:"dept_platform", name:"Platform", people_count:1, people:["王强"], children:[]}
+        ],
+        reporting_tree: [
+          {id:"org_person_wang", name:"王强", title:"部门经理", department:"Platform", children:[
+            {id:"org_person_zhang", name:"张伟", title:"产品负责人", department:"Product", children:[]},
+            {id:"org_person_li", name:"李娜", title:"资深同事", department:"Product", children:[]}
+          ]}
+        ],
+        summary: {department_count:2, person_count:3, reporting_line_count:2, root_count:1, unassigned_people_count:0},
+        storage: {scope:"session_memory", status:"demo", editable:true}
       },
       risks: [
         {title:"流程绕过", severity:.84, confidence:.72, people:["张伟"], suggestion:"要求最小可审计记录，确认授权人和例外条件。"},
@@ -291,6 +327,16 @@
       try { return JSON.parse(document.getElementById('org').value || '[]'); } catch { return []; }
     }
 
+    function orgStructureToOrgChart(orgStructure) {
+      return (orgStructure?.people || []).map(person => ({
+        name: person.name || '',
+        title: person.title || '',
+        team: person.department || person.team || '',
+        department: person.department || person.team || '',
+        manager: person.manager || '',
+      })).filter(person => person.name);
+    }
+
     async function analyze() {
       const information = document.getElementById('information').value;
       const question = document.getElementById('question').value;
@@ -317,6 +363,7 @@
 
     function render(data) {
       currentData = data;
+      if (data.session_id) currentSessionId = data.session_id;
       document.getElementById('summary').textContent = data.summary || '';
       const nodes = data.graph?.nodes || [];
       const edges = data.graph?.edges || [];
@@ -325,6 +372,7 @@
       document.getElementById('m-edges').textContent = edges.length;
       document.getElementById('m-risks').textContent = risks.length;
       renderPeopleDirectory(data);
+      renderOrgStructure(data.org_structure || data.persistent_org_structure || {});
       renderList('hypotheses', data.hidden_hypotheses || [], true);
       renderList('risks', risks, false);
       renderWork(data.work_graph || {});
@@ -350,9 +398,12 @@
       activeView = view;
       document.getElementById('tab-overview').classList.toggle('active', view === 'overview');
       document.getElementById('tab-people').classList.toggle('active', view === 'people');
+      document.getElementById('tab-org').classList.toggle('active', view === 'org');
       document.getElementById('view-overview').classList.toggle('active', view === 'overview');
       document.getElementById('view-people').classList.toggle('active', view === 'people');
+      document.getElementById('view-org').classList.toggle('active', view === 'org');
       if (view === 'people') renderPeopleDirectory(currentData || fallback);
+      if (view === 'org') renderOrgStructure((currentData || fallback).org_structure || (currentData || fallback).persistent_org_structure || {});
     }
 
     function getPeople(data) {
@@ -443,6 +494,175 @@
     function backToPeopleDirectory() {
       peopleMode = 'directory';
       renderPeopleDirectory(currentData || fallback);
+    }
+
+    function renderOrgStructure(orgStructure) {
+      const savedDraft = loadOrgDraft();
+      const org = normalizeOrgStructure(Object.keys(orgStructure || {}).length ? orgStructure : savedDraft);
+      const summary = org.summary || {};
+      const departments = org.departments || [];
+      const people = org.people || [];
+      const lines = org.reporting_lines || [];
+      const trees = org.reporting_tree || [];
+      document.getElementById('org-structure').innerHTML = `
+        <h3>组织架构</h3>
+        <p class="small">专门记录部门、人员、岗位和正式汇报线。这里保存的是结构化组织信息，不是风险判断。</p>
+        <div class="metric-grid">
+          <div class="metric"><span class="small">部门</span><strong>${Number(summary.department_count ?? departments.length)}</strong></div>
+          <div class="metric"><span class="small">人员</span><strong>${Number(summary.person_count ?? people.length)}</strong></div>
+          <div class="metric"><span class="small">汇报线</span><strong>${Number(summary.reporting_line_count ?? lines.length)}</strong></div>
+        </div>
+        <div class="card person-detail">
+          <strong>部门</strong>
+          ${departments.map(dept => `
+            <p class="small">${escapeHtml(dept.name || '')} · ${Number(dept.people_count || (dept.people || []).length)} 人</p>
+          `).join('') || '<p class="small">暂无部门。</p>'}
+        </div>
+        <div class="card person-detail">
+          <strong>汇报树</strong>
+          <div class="org-tree">${trees.map(node => renderOrgTreeNode(node)).join('') || '<p class="small">暂无汇报树。</p>'}</div>
+        </div>
+        <div class="card person-detail">
+          <strong>人员名单</strong>
+          ${people.map(person => `
+            <p class="small">${escapeHtml(person.name || '')} · ${escapeHtml(person.title || '未标注岗位')} · ${escapeHtml(person.department || '未标注部门')} ${person.manager ? `→ 汇报 ${escapeHtml(person.manager)}` : ''}</p>
+          `).join('') || '<p class="small">暂无人员。</p>'}
+        </div>
+        <div class="card person-detail">
+          <strong>正式汇报线</strong>
+          ${lines.map(line => `<p class="small">${escapeHtml(line.source_name || '')} → ${escapeHtml(line.target_name || '')}</p>`).join('') || '<p class="small">暂无汇报线。</p>'}
+        </div>
+        <div class="card person-detail">
+          <strong>编辑组织架构 JSON</strong>
+          <p class="small">可直接修改 people / departments / reporting_lines；保存后会同步到左侧结构化组织架构输入，并参与下一次分析。</p>
+          <textarea id="org-editor" class="org-editor">${escapeHtml(JSON.stringify(org, null, 2))}</textarea>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+            <button class="primary" onclick="saveOrgStructure()">保存组织架构</button>
+            <button onclick="resetOrgDraft()">清除本地草稿</button>
+          </div>
+          <p id="org-save-status" class="small"></p>
+        </div>
+      `;
+    }
+
+    function renderOrgTreeNode(node) {
+      const children = node.children || [];
+      return `
+        <div class="org-node">
+          <strong>${escapeHtml(node.name || '')}</strong>
+          <span class="chip">${escapeHtml(node.title || '未标注岗位')}</span>
+          <span class="chip">${escapeHtml(node.department || '未标注部门')}</span>
+          ${children.map(child => renderOrgTreeNode(child)).join('')}
+        </div>
+      `;
+    }
+
+    function normalizeOrgStructure(org) {
+      if (!org || !Object.keys(org).length) {
+        return fallback.org_structure;
+      }
+      const people = org.people || orgStructureToOrgChart(org).map(person => ({
+        id: `org_person_${person.name}`,
+        name: person.name,
+        title: person.title,
+        department: person.department || person.team || '未标注部门',
+        manager: person.manager || '',
+        source: 'edited_org_structure',
+      }));
+      const departments = org.departments || [...new Set(people.map(person => person.department || '未标注部门'))].map(name => ({
+        id: `dept_${name}`,
+        name,
+        parent_id: '',
+        people: people.filter(person => (person.department || '未标注部门') === name).map(person => person.name),
+        people_count: people.filter(person => (person.department || '未标注部门') === name).length,
+        manager_names: [],
+      }));
+      const reportingLines = org.reporting_lines || people.filter(person => person.manager).map(person => ({
+        id: `org_line_${person.name}_${person.manager}`,
+        source_name: person.name,
+        target_name: person.manager,
+        type: 'formal_reports_to',
+        label: '正式汇报线',
+      }));
+      return {
+        ...org,
+        people,
+        departments,
+        reporting_lines: reportingLines,
+        department_tree: org.department_tree || departments.map(dept => ({...dept, children: []})),
+        reporting_tree: org.reporting_tree || buildClientReportingTree(people),
+        summary: {
+          department_count: departments.length,
+          person_count: people.length,
+          reporting_line_count: reportingLines.length,
+          root_count: (org.reporting_tree || buildClientReportingTree(people)).length,
+          ...(org.summary || {}),
+        },
+      };
+    }
+
+    function buildClientReportingTree(people) {
+      const byName = Object.fromEntries(people.map(person => [person.name, person]));
+      const children = {};
+      people.forEach(person => {
+        if (!person.manager) return;
+        if (!children[person.manager]) children[person.manager] = [];
+        children[person.manager].push(person);
+      });
+      const childNames = new Set(people.filter(person => person.manager && byName[person.manager]).map(person => person.name));
+      const roots = people.filter(person => !childNames.has(person.name));
+      const build = (person, seen = new Set()) => {
+        if (seen.has(person.name)) return {...person, children: [], cycle_detected: true};
+        const nextSeen = new Set(seen);
+        nextSeen.add(person.name);
+        return {
+          id: person.id || `org_person_${person.name}`,
+          name: person.name,
+          title: person.title || '',
+          department: person.department || person.team || '未标注部门',
+          children: (children[person.name] || []).map(child => build(child, nextSeen)),
+        };
+      };
+      return roots.map(root => build(root));
+    }
+
+    function loadOrgDraft() {
+      try { return JSON.parse(localStorage.getItem(ORG_DRAFT_KEY) || '{}'); } catch { return {}; }
+    }
+
+    async function saveOrgStructure() {
+      const status = document.getElementById('org-save-status');
+      try {
+        const parsed = normalizeOrgStructure(JSON.parse(document.getElementById('org-editor').value || '{}'));
+        localStorage.setItem(ORG_DRAFT_KEY, JSON.stringify(parsed));
+        document.getElementById('org').value = JSON.stringify(orgStructureToOrgChart(parsed), null, 2);
+        if (currentData) currentData.org_structure = parsed;
+        if (currentSessionId && location.protocol !== 'file:') {
+          await fetch('/api/v1/org-structure', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({session_id: currentSessionId, org_structure: parsed}),
+          });
+        }
+        status.textContent = '已保存组织架构，并同步到下一次分析输入。';
+        renderOrgStructure(parsed);
+      } catch (err) {
+        status.textContent = `保存失败：${err.message || err}`;
+      }
+    }
+
+    function resetOrgDraft() {
+      localStorage.removeItem(ORG_DRAFT_KEY);
+      document.getElementById('org').value = JSON.stringify(orgStructureToOrgChart(fallback.org_structure), null, 2);
+      renderOrgStructure((currentData || fallback).org_structure || fallback.org_structure);
+    }
+
+    function applySavedOrgDraft() {
+      const draft = loadOrgDraft();
+      if (draft && Object.keys(draft).length) {
+        document.getElementById('org').value = JSON.stringify(orgStructureToOrgChart(draft), null, 2);
+        fallback.org_structure = normalizeOrgStructure(draft);
+      }
     }
 
     function renderPersonDetail(data, name) {
@@ -668,7 +888,8 @@
     function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[s])); }
     function escapeAttr(v) { return String(v ?? '').replace(/[\\'"]/g, '\\$&'); }
     function formatTime(ts) { return ts ? new Date(ts * 1000).toLocaleString('zh-CN') : '未知时间'; }
-    window.addEventListener('resize', () => render(fallback));
+    window.addEventListener('resize', () => render(currentData || fallback));
+    applySavedOrgDraft();
     render(fallback);
   </script>
 </body>

@@ -69,6 +69,11 @@ class MemoryImportRequest(BaseModel):
     memory_data: Dict[str, Any]
 
 
+class OrgStructureUpdateRequest(BaseModel):
+    session_id: str
+    org_structure: Dict[str, Any]
+
+
 class FeedbackRequest(BaseModel):
     session_id: str
     item_type: str
@@ -204,6 +209,29 @@ async def get_person_profile(session_id: str, person_name: str) -> Dict[str, Any
         "session_id": session_id,
         "person": person_name,
         "profile": profile
+    }
+
+
+@app.get("/api/v1/org-structure/{session_id}")
+async def get_org_structure(session_id: str) -> Dict[str, Any]:
+    """获取指定会话的组织架构。"""
+    if session_id not in active_sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {
+        "session_id": session_id,
+        "org_structure": active_sessions[session_id].get_org_structure(),
+    }
+
+
+@app.post("/api/v1/org-structure")
+async def update_org_structure(request: OrgStructureUpdateRequest) -> Dict[str, Any]:
+    """更新指定会话的组织架构。"""
+    session_id, harness = get_or_create_session(request.session_id)
+    org_structure = harness.update_org_structure(request.org_structure)
+    return {
+        "session_id": session_id,
+        "org_structure": org_structure,
+        "success": bool(org_structure),
     }
 
 

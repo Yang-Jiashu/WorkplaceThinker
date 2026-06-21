@@ -110,6 +110,15 @@ class WorkplaceMemoryEngine:
         self._relationships: Dict[str, RelationshipEdge] = {}  # key: source|target|type
         self._graph_snapshots: List[GraphSnapshot] = []  # 时间线快照
         self._people: Dict[str, Dict[str, Any]] = {}  # 持久化的人物节点
+        self._org_structure: Dict[str, Any] = {
+            "departments": [],
+            "people": [],
+            "reporting_lines": [],
+            "department_tree": [],
+            "reporting_tree": [],
+            "summary": {},
+            "updated_at": None,
+        }
         
         # DocThinker 记忆核心
         self._memory_core: Optional[AgentMemoryCore] = None
@@ -369,6 +378,9 @@ class WorkplaceMemoryEngine:
                     example=", ".join(pattern.get("evidence_ids", [])[:3]),
                     confidence=pattern.get("confidence", 0.5),
                 )
+
+        if analysis_result.get("org_structure"):
+            self.update_org_structure(analysis_result["org_structure"])
         
         # ====== 持续更新关系图谱 ======
         self.update_graph_from_analysis(analysis_result)
@@ -423,6 +435,7 @@ class WorkplaceMemoryEngine:
             "has_memory": True,
             "person_profiles": {},
             "relevant_patterns": [],
+            "org_structure": self.get_org_structure(),
             "similar_scenarios_count": len(self._historical_analyses),
         }
         
@@ -482,6 +495,7 @@ class WorkplaceMemoryEngine:
                 }
                 for key, p in self._patterns.items()
             },
+            "org_structure": self.get_org_structure(),
             # ====== 图谱数据 ======
             "people": self._people,
             "relationships": {
@@ -539,6 +553,9 @@ class WorkplaceMemoryEngine:
                     created_at=pattern_data.get("created_at", time.time()),
                     last_used=pattern_data.get("last_used", time.time()),
                 )
+
+        if "org_structure" in data and isinstance(data["org_structure"], dict):
+            self.update_org_structure(data["org_structure"])
         
         # ====== 导入图谱数据 ======
         if "people" in data:
@@ -572,6 +589,32 @@ class WorkplaceMemoryEngine:
         
         if "session_id" in data and not self.session_id:
             self.session_id = data["session_id"]
+
+    def update_org_structure(self, org_structure: Dict[str, Any]) -> Dict[str, Any]:
+        """更新 session 级组织架构记忆。"""
+        if not isinstance(org_structure, dict):
+            return self._org_structure
+        stored = dict(org_structure)
+        stored["updated_at"] = time.time()
+        stored.setdefault("departments", [])
+        stored.setdefault("people", [])
+        stored.setdefault("reporting_lines", [])
+        stored.setdefault("department_tree", [])
+        stored.setdefault("reporting_tree", [])
+        stored.setdefault("summary", {})
+        stored.setdefault("storage", {})
+        stored["storage"] = {
+            **stored.get("storage", {}),
+            "scope": "session_memory",
+            "status": "stored",
+            "editable": True,
+        }
+        self._org_structure = stored
+        return self._org_structure
+
+    def get_org_structure(self) -> Dict[str, Any]:
+        """获取当前 session 的组织架构。"""
+        return dict(self._org_structure)
     
     # ====== 持续图谱构建 ======
     
@@ -835,4 +878,7 @@ class WorkplaceMemoryEngine:
             "people_count": len(self._people),
             "relationships_count": len(self._relationships),
             "snapshots_count": len(self._graph_snapshots),
+            "org_department_count": len(self._org_structure.get("departments", [])),
+            "org_person_count": len(self._org_structure.get("people", [])),
+            "org_reporting_line_count": len(self._org_structure.get("reporting_lines", [])),
         }
