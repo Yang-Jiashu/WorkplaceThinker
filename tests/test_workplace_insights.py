@@ -1,6 +1,6 @@
 import unittest
 
-from workplace_thinker import WorkplaceInsightEngine, WorkplaceInsightHarness
+from workplace_thinker import OrgStructureImporter, WorkplaceInsightEngine, WorkplaceInsightHarness
 
 try:
     from fastapi.testclient import TestClient
@@ -140,6 +140,29 @@ class WorkplaceInsightHarnessTest(unittest.IsolatedAsyncioTestCase):
         frame_ids = {frame["id"] for frame in result["knowledge_context"]["active_frames"]}
         self.assertTrue({"raci", "decision_record", "boundary_setting", "organizational_dynamics"} & frame_ids)
 
+    async def test_org_importer_accepts_image_and_text_with_vlm(self):
+        async def fake_vlm(prompt, image_paths):
+            self.assertTrue(image_paths)
+            return """
+            {
+              "people": [
+                {"name": "张伟", "title": "产品负责人", "department": "Product", "manager": "王强"},
+                {"name": "王强", "title": "部门经理", "department": "Platform", "manager": ""}
+              ]
+            }
+            """
+
+        tiny_png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+        importer = OrgStructureImporter(vlm_func=fake_vlm)
+        result = await importer.import_structure(
+            text="补充：截图里的箭头表示直属汇报。",
+            images=[{"base64": tiny_png, "mime_type": "image/png", "name": "org.png"}],
+        )
+        org = result["org_structure"]
+        self.assertEqual(2, org["summary"]["person_count"])
+        self.assertEqual(1, org["summary"]["reporting_line_count"])
+        self.assertTrue(result["import_summary"]["vlm_used"])
+
 
 class WorkplaceInsightAPITest(unittest.TestCase):
     @unittest.skipIf(TestClient is None or app is None, "fastapi is not installed")
@@ -201,6 +224,24 @@ class WorkplaceInsightAPITest(unittest.TestCase):
         self.assertEqual(200, get_response.status_code)
         org_payload = get_response.json()["org_structure"]
         self.assertEqual("Product", org_payload["departments"][0]["name"])
+
+    @unittest.skipIf(TestClient is None or app is None, "fastapi is not installed")
+    def test_api_org_structure_import_text_fallback(self):
+        client = TestClient(app)
+        response = client.post(
+            "/api/v1/org-structure/import",
+            json={
+                "session_id": "org_import_text_session",
+                "text": "组织架构：张伟 - 产品负责人 - Product 团队 - 汇报王强\n组织架构：王强 - 部门经理 - Platform 部门",
+                "images": [],
+                "use_vlm": False,
+            },
+        )
+        self.assertEqual(200, response.status_code)
+        payload = response.json()
+        self.assertTrue(payload["success"])
+        self.assertEqual(2, payload["org_structure"]["summary"]["person_count"])
+        self.assertEqual(1, payload["org_structure"]["summary"]["reporting_line_count"])
 
     @unittest.skipIf(TestClient is None or app is None, "fastapi is not installed")
     def test_home_serves_graph_ui(self):

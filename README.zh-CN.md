@@ -58,9 +58,31 @@ Demo 里有独立的 **组织架构** tab，用来管理相对稳定的组织事
 - 正式汇报线；
 - 部门树和人员汇报树；
 - 可编辑 JSON 草稿，并可同步到下一次分析输入。
+- 图片 + 文本导入：上传组织架构图、通讯录截图或汇报线截图，通过 VLM API 抽取后整理进组织架构。
 
 后端会返回 `org_structure`，并把它写入 session memory。API 也提供
-`GET /api/v1/org-structure/{session_id}` 和 `POST /api/v1/org-structure`。
+`GET /api/v1/org-structure/{session_id}`、`POST /api/v1/org-structure`
+和 `POST /api/v1/org-structure/import`。
+
+多模态导入输入：
+
+```json
+{
+  "session_id": "my_session",
+  "text": "补充：张伟汇报王强，Product 属于业务中台。",
+  "images": [
+    {
+      "name": "org-chart.png",
+      "mime_type": "image/png",
+      "data_url": "data:image/png;base64,..."
+    }
+  ],
+  "use_vlm": true
+}
+```
+
+输出仍然是统一的 `org_structure`，并带 `import_summary` 说明图片数量、
+是否调用 VLM、抽取到多少人/部门/汇报线。
 
 ### 工作内容网
 

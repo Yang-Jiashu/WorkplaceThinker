@@ -16,6 +16,7 @@ from collections import Counter
 from typing import Any, Dict, List, Optional, Sequence
 
 from .insights import LLMFunc, WorkplaceInsightEngine
+from .org_importer import OrgStructureImporter, VLMFunc
 
 try:
     from .memory_engine import WorkplaceMemoryEngine
@@ -198,6 +199,7 @@ class WorkplaceInsightHarness:
         memory_engine: Optional[WorkplaceMemoryEngine] = None,
         session_id: Optional[str] = None,
         enable_memory: bool = True,
+        vlm_func: Optional[VLMFunc] = None,
     ):
         self.enable_memory = enable_memory and HAS_MEMORY_ENGINE
         
@@ -220,6 +222,7 @@ class WorkplaceInsightHarness:
         self.reasoning = ReasoningHarness(self.engine)
         self.graph = GraphHarness()
         self.control = ControlHarness()
+        self.org_importer = OrgStructureImporter(vlm_func=vlm_func, engine=self.engine)
         
         # P0 改进: 对话引擎
         self.conversation = ConversationEngine() if HAS_CONVERSATION else None
@@ -509,6 +512,24 @@ class WorkplaceInsightHarness:
         if self.enable_memory and self.memory:
             return self.memory.update_org_structure(org_structure)
         return None
+
+    async def import_org_structure(
+        self,
+        *,
+        text: str = "",
+        images: Sequence[Dict[str, Any]] = (),
+        use_vlm: bool = True,
+    ) -> Dict[str, Any]:
+        """从图片 + 文本导入组织架构。"""
+        imported = await self.org_importer.import_structure(
+            text=text,
+            images=images,
+            existing_org_structure=self.get_org_structure() or {},
+            use_vlm=use_vlm,
+        )
+        if self.enable_memory and self.memory:
+            imported["org_structure"] = self.memory.update_org_structure(imported["org_structure"])
+        return imported
     
     async def record_user_feedback(self, feedback: Dict[str, Any]) -> bool:
         """记录用户反馈，用于改进记忆"""

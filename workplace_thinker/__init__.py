@@ -8,6 +8,7 @@ P0 增强：对话式追问、行动话术、结果分级、时序分析
 from .insights import WorkplaceInsightEngine
 from .harness import WorkplaceInsightHarness
 from .memory_engine import WorkplaceMemoryEngine
+from .org_importer import OrgStructureImporter
 from .conversation_engine import (
     ConversationEngine,
     prioritize_results,
@@ -22,6 +23,7 @@ __all__ = [
     "WorkplaceInsightEngine",
     "WorkplaceInsightHarness",
     "WorkplaceMemoryEngine",
+    "OrgStructureImporter",
     "ConversationEngine",
     "prioritize_results",
     "generate_action_scripts",

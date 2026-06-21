@@ -113,6 +113,7 @@
     .org-tree { display: grid; gap: 8px; margin-top: 10px; }
     .org-node { border-left: 3px solid var(--lake); padding-left: 10px; margin: 6px 0 6px 10px; }
     .org-editor { min-height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+    input[type="file"] { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--surface); }
     @media (max-width: 1100px) {
       .shell { grid-template-columns: 1fr; }
       aside, main { border-right: 0; border-bottom: 1px solid var(--line); }
@@ -507,6 +508,19 @@
       document.getElementById('org-structure').innerHTML = `
         <h3>组织架构</h3>
         <p class="small">专门记录部门、人员、岗位和正式汇报线。这里保存的是结构化组织信息，不是风险判断。</p>
+        <div class="card person-detail">
+          <strong>图片 + 文本导入</strong>
+          <p class="small">上传组织架构图、通讯录截图或汇报线截图；有 VLM API 时会识别图片，没有时会先用文本兜底。</p>
+          <label>补充说明</label>
+          <textarea id="org-import-text" style="min-height: 90px;" placeholder="例如：这是产品与平台团队组织架构，箭头表示直属汇报。"></textarea>
+          <label>组织架构图片</label>
+          <input id="org-import-images" type="file" accept="image/*" multiple />
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+            <button class="primary" onclick="importOrgFromImages()">导入组织架构</button>
+            <button onclick="document.getElementById('org-import-images').value=''">清空图片</button>
+          </div>
+          <p id="org-import-status" class="small"></p>
+        </div>
         <div class="metric-grid">
           <div class="metric"><span class="small">部门</span><strong>${Number(summary.department_count ?? departments.length)}</strong></div>
           <div class="metric"><span class="small">人员</span><strong>${Number(summary.person_count ?? people.length)}</strong></div>
@@ -648,6 +662,56 @@
         renderOrgStructure(parsed);
       } catch (err) {
         status.textContent = `保存失败：${err.message || err}`;
+      }
+    }
+
+    function fileToDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function importOrgFromImages() {
+      const status = document.getElementById('org-import-status');
+      const files = Array.from(document.getElementById('org-import-images').files || []);
+      const text = document.getElementById('org-import-text').value || '';
+      status.textContent = '正在导入组织架构...';
+      try {
+        const images = await Promise.all(files.map(async file => ({
+          name: file.name,
+          mime_type: file.type || 'image/png',
+          data_url: await fileToDataUrl(file),
+        })));
+        if (!images.length && !text.trim()) {
+          status.textContent = '请至少上传一张图片或填写补充说明。';
+          return;
+        }
+        if (location.protocol === 'file:') {
+          const fallbackText = text || '文件模式无法调用 VLM API。请启动后端服务后再导入图片。';
+          document.getElementById('information').value += `\n${fallbackText}`;
+          status.textContent = '当前是 file:// 预览，已把补充说明加入输入框；启动 API 服务后可调用 VLM 导入图片。';
+          return;
+        }
+        const response = await fetch('/api/v1/org-structure/import', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({session_id: currentSessionId || undefined, text, images, use_vlm: true}),
+        });
+        if (!response.ok) throw new Error(await response.text());
+        const payload = await response.json();
+        currentSessionId = payload.session_id || currentSessionId;
+        if (!currentData) currentData = {...fallback};
+        currentData.session_id = currentSessionId;
+        currentData.org_structure = payload.org_structure;
+        localStorage.setItem(ORG_DRAFT_KEY, JSON.stringify(payload.org_structure));
+        document.getElementById('org').value = JSON.stringify(orgStructureToOrgChart(payload.org_structure), null, 2);
+        renderOrgStructure(payload.org_structure);
+        document.getElementById('org-import-status').textContent = `导入完成：${payload.import_summary?.person_count || 0} 人，${payload.import_summary?.department_count || 0} 个部门，${payload.import_summary?.reporting_line_count || 0} 条汇报线。`;
+      } catch (err) {
+        status.textContent = `导入失败：${err.message || err}`;
       }
     }
 

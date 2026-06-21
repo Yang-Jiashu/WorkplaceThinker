@@ -69,9 +69,33 @@ stable organization facts:
 - formal reporting lines;
 - department tree and person reporting tree;
 - editable JSON drafts that can be reused in the next analysis.
+- image + text import: upload org-chart screenshots, directory screenshots, or
+  reporting-line diagrams, then use a VLM API to extract the structure.
 
 The backend returns `org_structure`, stores it in session memory, and exposes
-`GET /api/v1/org-structure/{session_id}` plus `POST /api/v1/org-structure`.
+`GET /api/v1/org-structure/{session_id}`, `POST /api/v1/org-structure`,
+and `POST /api/v1/org-structure/import`.
+
+Multimodal import input:
+
+```json
+{
+  "session_id": "my_session",
+  "text": "Additional note: Zhang Wei reports to Wang Qiang.",
+  "images": [
+    {
+      "name": "org-chart.png",
+      "mime_type": "image/png",
+      "data_url": "data:image/png;base64,..."
+    }
+  ],
+  "use_vlm": true
+}
+```
+
+The output uses the same `org_structure` contract and adds `import_summary`
+with image count, VLM usage, and extracted people / department / reporting-line
+counts.
 
 ### Work Network
 

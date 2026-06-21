@@ -116,9 +116,15 @@ It stores relatively stable facts:
 - department tree and person reporting tree;
 - editable JSON that can be saved into session memory and reused in future
   analysis.
+- multimodal import from org-chart screenshots plus text through a VLM API.
 
 This keeps "who officially reports to whom" distinct from softer signals like
 support, blocking, sponsorship, or shadow decision chains.
+
+Multimodal organization import is intentionally scoped to organization facts.
+Its output is normalized back into `org_structure`; it should not infer risk,
+personality, motive, sponsorship, or hidden political dynamics from an image
+alone.
 
 ## Output Contract
 

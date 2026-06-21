@@ -74,6 +74,13 @@ class OrgStructureUpdateRequest(BaseModel):
     org_structure: Dict[str, Any]
 
 
+class OrgStructureImportRequest(BaseModel):
+    session_id: Optional[str] = None
+    text: str = ""
+    images: List[Dict[str, Any]] = Field(default_factory=list)
+    use_vlm: bool = True
+
+
 class FeedbackRequest(BaseModel):
     session_id: str
     item_type: str
@@ -232,6 +239,22 @@ async def update_org_structure(request: OrgStructureUpdateRequest) -> Dict[str, 
         "session_id": session_id,
         "org_structure": org_structure,
         "success": bool(org_structure),
+    }
+
+
+@app.post("/api/v1/org-structure/import")
+async def import_org_structure(request: OrgStructureImportRequest) -> Dict[str, Any]:
+    """通过图片 + 文本导入组织架构。"""
+    session_id, harness = get_or_create_session(request.session_id)
+    imported = await harness.import_org_structure(
+        text=request.text,
+        images=request.images,
+        use_vlm=request.use_vlm,
+    )
+    return {
+        "session_id": session_id,
+        **imported,
+        "success": True,
     }
 
 
