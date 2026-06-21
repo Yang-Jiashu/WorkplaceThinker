@@ -25,12 +25,46 @@
       color: var(--ink);
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    .shell { display: grid; grid-template-columns: 360px 1fr 390px; min-height: 100vh; }
-    aside, main { border-right: 1px solid var(--line); }
-    aside, .panel { background: rgba(255,254,250,0.9); }
-    .brand { padding: 26px 24px 18px; border-bottom: 1px solid var(--line); }
+    .shell {
+      width: min(1280px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 18px 0 28px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas:
+        "input"
+        "graph"
+        "panel";
+      gap: 16px;
+      min-height: 100vh;
+    }
+    .shell.has-results {
+      grid-template-columns: minmax(0, 1fr) 380px;
+      grid-template-areas:
+        "input input"
+        "graph panel";
+      align-items: start;
+    }
+    aside, main { border: 0; }
+    aside {
+      grid-area: input;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      overflow: hidden;
+      background: rgba(255,254,250,0.96);
+    }
+    .panel { background: rgba(255,254,250,0.96); }
+    .brand {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+    }
+    .brand-copy { max-width: 620px; }
     .kicker { color: var(--copper); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
-    h1 { margin: 8px 0 6px; font-family: Georgia, "Times New Roman", serif; font-size: 30px; line-height: 1.1; }
+    h1 { margin: 6px 0 4px; font-family: Georgia, "Times New Roman", serif; font-size: 32px; line-height: 1.1; }
     p { color: var(--muted); line-height: 1.55; }
     textarea {
       width: 100%;
@@ -67,8 +101,16 @@
       outline: none;
     }
     input[type="text"]:focus, input[type="url"]:focus { border-color: var(--copper); box-shadow: 0 0 0 3px rgba(184,92,56,.12); }
-    .controls { padding: 20px 24px 28px; }
-    .start-grid { display: grid; gap: 10px; margin-bottom: 18px; }
+    .controls {
+      padding: 18px 24px 22px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(300px, .85fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .primary-input { min-width: 0; }
+    .utility-rail { min-width: 0; display: grid; gap: 10px; }
+    .start-grid { display: grid; gap: 10px; }
     .start-card {
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -121,7 +163,16 @@
     .banner.ok { background: #f3f8f5; }
     .import-center { display:grid; gap:10px; margin-bottom:14px; }
     .progress-row { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:8px 0; }
-    main { position: relative; overflow: hidden; }
+    main {
+      grid-area: graph;
+      position: relative;
+      overflow: hidden;
+      min-height: 420px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--surface);
+    }
+    .shell.has-results main { min-height: 620px; }
     .topbar {
       height: 76px;
       display: flex;
@@ -142,7 +193,17 @@
     .edge.formal { stroke: var(--lake); stroke-width: 2.5; }
     .edge.support { stroke: var(--sage); stroke-width: 3; }
     .edge-label { font-size: 11px; fill: var(--muted); paint-order: stroke; stroke: var(--paper); stroke-width: 6; }
-    .side { padding: 24px; overflow-y: auto; max-height: 100vh; }
+    .side {
+      grid-area: panel;
+      display: none;
+      padding: 18px;
+      overflow-y: auto;
+      max-height: calc(100vh - 36px);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+    }
+    .shell.has-results .side,
+    .shell.show-panel .side { display: block; }
     .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
     .metric, .card {
       border: 1px solid var(--line);
@@ -181,8 +242,16 @@
     .migration-editor { min-height: 150px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
     input[type="file"] { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--surface); }
     @media (max-width: 1100px) {
-      .shell { grid-template-columns: 1fr; }
-      aside, main { border-right: 0; border-bottom: 1px solid var(--line); }
+      .shell, .shell.has-results {
+        width: min(100% - 20px, 920px);
+        grid-template-columns: 1fr;
+        grid-template-areas:
+          "input"
+          "graph"
+          "panel";
+      }
+      .controls { grid-template-columns: 1fr; }
+      .brand { display: block; }
       .graph-wrap { position: relative; height: 560px; inset: auto; }
       .side { max-height: none; }
     }
@@ -192,69 +261,73 @@
   <div class="shell">
     <aside>
       <div class="brand">
-        <div class="kicker">WorkplaceThinker</div>
-        <h1>职场关系雷达</h1>
-        <p>把聊天、上传材料和组织架构转成可审计的人际关系图、合作图和隐藏风险假设。</p>
+        <div class="brand-copy">
+          <div class="kicker">WorkplaceThinker</div>
+          <h1>职场关系雷达</h1>
+          <p>把聊天、上传材料和组织架构转成可审计的人际关系图、合作图和隐藏风险假设。</p>
+        </div>
+        <div class="quick-row">
+          <button onclick="toggleSettings()">配置</button>
+          <button onclick="checkConfig()">检测服务</button>
+        </div>
       </div>
       <div class="controls">
-        <div class="start-grid">
-          <div class="start-card">
-            <strong>开始工作台</strong>
-            <p class="small">先选入口，再分析。支持粘贴材料、导入组织架构图、迁移旧记忆。</p>
-            <div class="quick-row">
-              <button onclick="focusMainInput()">粘贴信息</button>
-              <button onclick="openOrgImport()">导入组织架构图</button>
-              <button onclick="openMigrationPanel()">迁移旧记忆</button>
-            </div>
+        <div class="primary-input">
+          <label>关注问题</label>
+          <textarea id="question" placeholder="例如：这段协作里有哪些关系、责任和隐藏风险需要确认？"></textarea>
+          <label>直接粘贴所有信息</label>
+          <textarea id="information" style="min-height: 240px;" placeholder="把聊天记录、会议纪要、组织架构、项目背景一次性贴进来。也可以先点右侧导入组织架构图。"></textarea>
+          <details style="margin-top: 16px;">
+            <summary class="small" style="cursor:pointer;">高级：结构化组织架构 JSON，可不填</summary>
+            <label>组织架构 JSON</label>
+            <textarea id="org" style="min-height: 120px;" placeholder='[{"name":"张伟","title":"产品负责人","team":"Product","manager":"王强"}]'></textarea>
+          </details>
+          <div style="display:flex; gap:10px; margin-top:18px; flex-wrap:wrap;">
+            <button class="primary" onclick="analyze()">生成关系图</button>
+            <button onclick="loadSample()">载入示例</button>
           </div>
+          <p id="analysis-status" class="small">默认只需要粘贴信息。后端接口：POST /api/v1/workplace/analyze/raw。</p>
+        </div>
+        <div class="utility-rail">
           <div class="start-card">
             <div class="progress-row">
               <strong>运行状态</strong>
               <span id="api-status" class="status-pill warn">未检测</span>
             </div>
             <p id="config-summary" class="small">当前从本地页面打开时，需要配置 API 地址才能调用后端。</p>
+          </div>
+          <div class="start-card">
+            <strong>导入</strong>
+            <p class="small">把组织图、旧记忆和材料分入口处理，不用都挤在输入框里。</p>
             <div class="quick-row">
-              <button onclick="toggleSettings()">配置</button>
-              <button onclick="checkConfig()">检测服务</button>
+              <button onclick="focusMainInput()">粘贴材料</button>
+              <button onclick="openOrgImport()">组织架构图</button>
+              <button onclick="openMigrationPanel()">旧记忆迁移</button>
             </div>
           </div>
-        </div>
-        <div id="settings-panel" class="settings-panel" style="display:none;">
-          <strong>运行配置</strong>
-          <label>API 地址</label>
-          <input id="api-base" type="url" placeholder="http://127.0.0.1:8000" />
-          <label>Session ID</label>
-          <input id="session-id-input" type="text" placeholder="留空自动创建；填入可继续旧 session" />
-          <label class="check-row"><input id="cfg-use-memory" type="checkbox" checked /> 使用长期记忆</label>
-          <label class="check-row"><input id="cfg-save-memory" type="checkbox" checked /> 分析结果写入记忆</label>
-          <label class="check-row"><input id="cfg-use-llm" type="checkbox" /> 使用 LLM 增强分析</label>
-          <p id="runtime-status" class="small">VLM Key 在后端环境变量配置：VLM_API_KEY 或 OPENAI_API_KEY。</p>
-        </div>
-        <div id="migration-panel" class="settings-panel" style="display:none;">
-          <strong>旧数据迁移</strong>
-          <p class="small">粘贴旧 memory export，先预览 schema 迁移结果；确认没问题后可以导入当前 session。</p>
-          <textarea id="migration-input" class="migration-editor" placeholder='{"org_chart":[{"name":"张伟","team":"Product","reports_to":"王强"}]}'></textarea>
-          <div class="quick-row">
-            <button onclick="previewMigration()">预览迁移</button>
-            <button class="primary" onclick="importMigratedMemory()">导入迁移结果</button>
+          <div id="settings-panel" class="settings-panel" style="display:none;">
+            <strong>运行配置</strong>
+            <label>API 地址</label>
+            <input id="api-base" type="url" placeholder="http://127.0.0.1:8000" />
+            <label>Session ID</label>
+            <input id="session-id-input" type="text" placeholder="留空自动创建；填入可继续旧 session" />
+            <label class="check-row"><input id="cfg-use-memory" type="checkbox" checked /> 使用长期记忆</label>
+            <label class="check-row"><input id="cfg-save-memory" type="checkbox" checked /> 分析结果写入记忆</label>
+            <label class="check-row"><input id="cfg-use-llm" type="checkbox" /> 使用 LLM 增强分析</label>
+            <p id="runtime-status" class="small">VLM Key 在后端环境变量配置：VLM_API_KEY 或 OPENAI_API_KEY。</p>
           </div>
-          <p id="migration-status" class="small"></p>
-          <textarea id="migration-output" class="migration-editor" placeholder="迁移结果会显示在这里"></textarea>
+          <div id="migration-panel" class="settings-panel" style="display:none;">
+            <strong>旧数据迁移</strong>
+            <p class="small">粘贴旧 memory export，先预览 schema 迁移结果；确认没问题后可以导入当前 session。</p>
+            <textarea id="migration-input" class="migration-editor" placeholder='{"org_chart":[{"name":"张伟","team":"Product","reports_to":"王强"}]}'></textarea>
+            <div class="quick-row">
+              <button onclick="previewMigration()">预览迁移</button>
+              <button class="primary" onclick="importMigratedMemory()">导入迁移结果</button>
+            </div>
+            <p id="migration-status" class="small"></p>
+            <textarea id="migration-output" class="migration-editor" placeholder="迁移结果会显示在这里"></textarea>
+          </div>
         </div>
-        <label>关注问题</label>
-        <textarea id="question" placeholder="例如：这段协作里有哪些关系、责任和隐藏风险需要确认？"></textarea>
-        <label>直接粘贴所有信息</label>
-        <textarea id="information" style="min-height: 280px;" placeholder="把聊天记录、会议纪要、组织架构、项目背景一次性贴进来。也可以先点右侧/入口导入组织架构图。"></textarea>
-        <details style="margin-top: 16px;">
-          <summary class="small" style="cursor:pointer;">高级：结构化组织架构 JSON，可不填</summary>
-          <label>组织架构 JSON</label>
-          <textarea id="org" style="min-height: 120px;" placeholder='[{"name":"张伟","title":"产品负责人","team":"Product","manager":"王强"}]'></textarea>
-        </details>
-        <div style="display:flex; gap:10px; margin-top:18px;">
-          <button class="primary" onclick="analyze()">生成关系图</button>
-          <button onclick="loadSample()">示例</button>
-        </div>
-        <p id="analysis-status" class="small">默认只需要粘贴信息。后端接口：POST /api/v1/workplace/analyze/raw。</p>
       </div>
     </aside>
     <main>
@@ -418,6 +491,7 @@
     }
 
     function openMigrationPanel() {
+      document.querySelector('.shell').classList.add('show-panel');
       document.getElementById('migration-panel').style.display = 'block';
       toggleSettings(true);
       document.getElementById('migration-input').focus();
@@ -428,6 +502,7 @@
     }
 
     function openOrgImport() {
+      document.querySelector('.shell').classList.add('show-panel');
       setView('org');
       if (!currentData) renderOrgStructure(loadOrgDraft());
       setTimeout(() => document.getElementById('org-import-text')?.focus(), 0);
@@ -639,6 +714,7 @@
         document.getElementById('session-id-input').value = currentSessionId;
         saveConfig();
       }
+      document.querySelector('.shell').classList.add('has-results', 'show-panel');
       document.getElementById('graph-wrap').classList.remove('has-empty');
       document.getElementById('empty-graph').style.display = 'none';
       refreshConfigSummary();
