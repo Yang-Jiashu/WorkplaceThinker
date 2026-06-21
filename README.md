@@ -397,6 +397,9 @@ memory_data = harness.export_memory()
 # Import memory
 harness.import_memory(memory_data)
 
+# Preview schema migration without writing into the session
+migration_preview = harness.preview_memory_migration(memory_data)
+
 # Get relationship history between two people
 history = harness.get_relationship_history("Zhang Wei", "Wang Qiang")
 
@@ -412,12 +415,23 @@ GET    /api/v1/memory/stats/{session_id}
 GET    /api/v1/memory/profile/{session_id}/{person_name}
 POST   /api/v1/memory/export
 POST   /api/v1/memory/import
+POST   /api/v1/memory/migrate
 POST   /api/v1/memory/clear/{session_id}
 DELETE /api/v1/memory/session/{session_id}
 POST   /api/v1/workplace/feedback
 GET    /api/v1/conversation/suggest/{session_id}
 GET    /api/v1/conversation/summary/{session_id}
 ```
+
+### Schema Migration
+
+Memory exports and organization-structure records include `schema_version`.
+When old exports are imported, WorkplaceThinker runs them through
+`WorkplaceMemoryMigrator` first, preserving legacy `org_chart`, person
+profiles, relationships, and graph snapshots while normalizing them into the
+current contracts. Use `POST /api/v1/memory/migrate` or
+`harness.preview_memory_migration(memory_data)` to inspect the upgraded payload
+before importing it.
 
 ## Safety Principle
 

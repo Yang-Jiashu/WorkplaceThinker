@@ -69,6 +69,11 @@ class MemoryImportRequest(BaseModel):
     memory_data: Dict[str, Any]
 
 
+class MemoryMigrateRequest(BaseModel):
+    session_id: Optional[str] = None
+    memory_data: Dict[str, Any]
+
+
 class OrgStructureUpdateRequest(BaseModel):
     session_id: str
     org_structure: Dict[str, Any]
@@ -278,6 +283,18 @@ async def import_memory(request: MemoryImportRequest) -> Dict[str, Any]:
     return {
         "session_id": session_id,
         "success": success
+    }
+
+
+@app.post("/api/v1/memory/migrate")
+async def migrate_memory(request: MemoryMigrateRequest) -> Dict[str, Any]:
+    """预览记忆 schema 迁移，不写入当前会话"""
+    session_id, harness = get_or_create_session(request.session_id)
+    preview = harness.preview_memory_migration(request.memory_data) or {}
+    return {
+        "session_id": session_id,
+        **preview,
+        "success": bool(preview),
     }
 
 

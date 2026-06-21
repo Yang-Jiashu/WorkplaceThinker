@@ -8,6 +8,11 @@ P0 增强：对话式追问、行动话术、结果分级、时序分析
 from .insights import WorkplaceInsightEngine
 from .harness import WorkplaceInsightHarness
 from .memory_engine import WorkplaceMemoryEngine
+from .migrations import (
+    CURRENT_MEMORY_SCHEMA_VERSION,
+    CURRENT_ORG_STRUCTURE_SCHEMA_VERSION,
+    WorkplaceMemoryMigrator,
+)
 from .org_importer import OrgStructureImporter
 from .conversation_engine import (
     ConversationEngine,
@@ -23,6 +28,9 @@ __all__ = [
     "WorkplaceInsightEngine",
     "WorkplaceInsightHarness",
     "WorkplaceMemoryEngine",
+    "WorkplaceMemoryMigrator",
+    "CURRENT_MEMORY_SCHEMA_VERSION",
+    "CURRENT_ORG_STRUCTURE_SCHEMA_VERSION",
     "OrgStructureImporter",
     "ConversationEngine",
     "prioritize_results",

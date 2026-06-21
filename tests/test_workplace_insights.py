@@ -1,6 +1,12 @@
 import unittest
 
-from workplace_thinker import OrgStructureImporter, WorkplaceInsightEngine, WorkplaceInsightHarness
+from workplace_thinker import (
+    CURRENT_MEMORY_SCHEMA_VERSION,
+    OrgStructureImporter,
+    WorkplaceInsightEngine,
+    WorkplaceInsightHarness,
+    WorkplaceMemoryMigrator,
+)
 
 try:
     from fastapi.testclient import TestClient
@@ -163,6 +169,32 @@ class WorkplaceInsightHarnessTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, org["summary"]["reporting_line_count"])
         self.assertTrue(result["import_summary"]["vlm_used"])
 
+    async def test_memory_migration_preserves_legacy_org_chart(self):
+        legacy_memory = {
+            "session_id": "legacy_session",
+            "person_profiles": [
+                {"name": "张伟", "team": "Product", "observed_patterns": ["推动很快"]}
+            ],
+            "org_chart": [
+                {"name": "张伟", "title": "产品负责人", "team": "Product", "reports_to": "王强"},
+                {"name": "王强", "title": "部门经理", "dept": "Platform"},
+            ],
+            "relationships": [
+                {"source": "张伟", "target": "王强", "type": "formal_reports_to", "label": "汇报"}
+            ],
+        }
+
+        migrated = WorkplaceMemoryMigrator().preview_memory_migration(legacy_memory)
+        memory_data = migrated["memory_data"]
+        org = memory_data["org_structure"]
+
+        self.assertEqual(CURRENT_MEMORY_SCHEMA_VERSION, memory_data["schema_version"])
+        self.assertTrue(migrated["migration"]["changed"])
+        self.assertEqual(2, org["summary"]["person_count"])
+        self.assertEqual(1, org["summary"]["reporting_line_count"])
+        self.assertIn("张伟", memory_data["person_profiles"])
+        self.assertTrue(memory_data["migration_history"])
+
 
 class WorkplaceInsightAPITest(unittest.TestCase):
     @unittest.skipIf(TestClient is None or app is None, "fastapi is not installed")
@@ -242,6 +274,27 @@ class WorkplaceInsightAPITest(unittest.TestCase):
         self.assertTrue(payload["success"])
         self.assertEqual(2, payload["org_structure"]["summary"]["person_count"])
         self.assertEqual(1, payload["org_structure"]["summary"]["reporting_line_count"])
+
+    @unittest.skipIf(TestClient is None or app is None, "fastapi is not installed")
+    def test_api_memory_migration_preview(self):
+        client = TestClient(app)
+        response = client.post(
+            "/api/v1/memory/migrate",
+            json={
+                "session_id": "migration_preview_session",
+                "memory_data": {
+                    "session_id": "legacy_session",
+                    "person_profiles": [{"name": "李娜", "team": "Product"}],
+                    "org_chart": [{"name": "李娜", "title": "资深同事", "team": "Product"}],
+                },
+            },
+        )
+        self.assertEqual(200, response.status_code)
+        payload = response.json()
+        self.assertTrue(payload["success"])
+        self.assertTrue(payload["migration"]["changed"])
+        self.assertEqual(CURRENT_MEMORY_SCHEMA_VERSION, payload["memory_data"]["schema_version"])
+        self.assertEqual(1, payload["memory_data"]["org_structure"]["summary"]["person_count"])
 
     @unittest.skipIf(TestClient is None or app is None, "fastapi is not installed")
     def test_home_serves_graph_ui(self):

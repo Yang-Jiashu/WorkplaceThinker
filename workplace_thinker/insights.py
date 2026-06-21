@@ -38,6 +38,7 @@ from .knowledge_injection import (
     match_work_objects,
     match_work_relations,
 )
+from .migrations import CURRENT_ORG_STRUCTURE_SCHEMA_VERSION
 
 
 LLMFunc = Callable[[str], Awaitable[str]]
@@ -1109,6 +1110,8 @@ class WorkplaceInsightEngine:
         reporting_tree = [build_person_tree(person) for person in sorted(roots, key=lambda item: item["name"])]
 
         return {
+            "schema_name": "workplace_org_structure",
+            "schema_version": CURRENT_ORG_STRUCTURE_SCHEMA_VERSION,
             "departments": departments,
             "people": people,
             "reporting_lines": reporting_lines,

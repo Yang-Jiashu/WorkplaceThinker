@@ -151,6 +151,15 @@ Organizational dynamics patterns are conservative long-horizon candidates; a
 single observation remains a `signal_cluster` until recurrence, memory, or user
 confirmation upgrades it.
 
+## Schema Migration
+
+Workplace memory is a long-horizon product asset, so exports and stable modules
+such as `org_structure` carry `schema_version`. `WorkplaceMemoryMigrator`
+normalizes older exports before import, including legacy `org_chart`, person
+profile lists, relationship lists, and organization fields such as
+`team/dept/reports_to`. The migration preview API lets the product show users
+what will be preserved and transformed before committing the import.
+
 ## Memory Design
 
 Short-horizon memory:

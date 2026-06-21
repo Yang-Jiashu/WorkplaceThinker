@@ -484,6 +484,12 @@ class WorkplaceInsightHarness:
             self.memory.import_memory(memory_data)
             return True
         return False
+
+    def preview_memory_migration(self, memory_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """预览旧记忆迁移结果，不写入当前 session。"""
+        if self.enable_memory and self.memory:
+            return self.memory.preview_memory_migration(memory_data)
+        return None
     
     def get_person_profile(self, name: str) -> Optional[Dict[str, Any]]:
         """获取人物画像"""

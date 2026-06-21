@@ -16,6 +16,12 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
+from .migrations import (
+    CURRENT_MEMORY_SCHEMA_VERSION,
+    CURRENT_ORG_STRUCTURE_SCHEMA_VERSION,
+    WorkplaceMemoryMigrator,
+)
+
 try:
     from docthinker.memory_core import AgentMemoryCore, RecallBundle
     from docthinker.memory_core.protocols import MemoryPolicy
@@ -111,6 +117,8 @@ class WorkplaceMemoryEngine:
         self._graph_snapshots: List[GraphSnapshot] = []  # 时间线快照
         self._people: Dict[str, Dict[str, Any]] = {}  # 持久化的人物节点
         self._org_structure: Dict[str, Any] = {
+            "schema_name": "workplace_org_structure",
+            "schema_version": CURRENT_ORG_STRUCTURE_SCHEMA_VERSION,
             "departments": [],
             "people": [],
             "reporting_lines": [],
@@ -119,6 +127,7 @@ class WorkplaceMemoryEngine:
             "summary": {},
             "updated_at": None,
         }
+        self._migrator = WorkplaceMemoryMigrator()
         
         # DocThinker 记忆核心
         self._memory_core: Optional[AgentMemoryCore] = None
@@ -466,6 +475,8 @@ class WorkplaceMemoryEngine:
     def export_memory(self) -> Dict[str, Any]:
         """导出记忆到字典，用于持久化"""
         return {
+            "schema_name": "workplace_memory_export",
+            "schema_version": CURRENT_MEMORY_SCHEMA_VERSION,
             "session_id": self.session_id,
             "exported_at": time.time(),
             "person_profiles": {
@@ -526,6 +537,7 @@ class WorkplaceMemoryEngine:
     
     def import_memory(self, data: Dict[str, Any]):
         """从字典导入记忆"""
+        data, _migration_report = self._migrator.migrate_memory(data)
         if "person_profiles" in data:
             for name, profile_data in data["person_profiles"].items():
                 profile = PersonProfile(
@@ -594,7 +606,7 @@ class WorkplaceMemoryEngine:
         """更新 session 级组织架构记忆。"""
         if not isinstance(org_structure, dict):
             return self._org_structure
-        stored = dict(org_structure)
+        stored, _migration_report = self._migrator.migrate_org_structure(org_structure)
         stored["updated_at"] = time.time()
         stored.setdefault("departments", [])
         stored.setdefault("people", [])
@@ -614,7 +626,13 @@ class WorkplaceMemoryEngine:
 
     def get_org_structure(self) -> Dict[str, Any]:
         """获取当前 session 的组织架构。"""
+        migrated, _migration_report = self._migrator.migrate_org_structure(self._org_structure)
+        self._org_structure = migrated
         return dict(self._org_structure)
+
+    def preview_memory_migration(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """预览旧记忆导入后的新版结构，不写入当前 session。"""
+        return self._migrator.preview_memory_migration(data)
     
     # ====== 持续图谱构建 ======
     

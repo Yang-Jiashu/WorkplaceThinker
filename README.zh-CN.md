@@ -367,6 +367,9 @@ memory_data = harness.export_memory()
 # 导入记忆
 harness.import_memory(memory_data)
 
+# 预览 schema 迁移结果，不写入当前 session
+migration_preview = harness.preview_memory_migration(memory_data)
+
 # 获取两个人关系的历史
 history = harness.get_relationship_history("张伟", "王强")
 
@@ -382,12 +385,21 @@ GET    /api/v1/memory/stats/{session_id}
 GET    /api/v1/memory/profile/{session_id}/{person_name}
 POST   /api/v1/memory/export
 POST   /api/v1/memory/import
+POST   /api/v1/memory/migrate
 POST   /api/v1/memory/clear/{session_id}
 DELETE /api/v1/memory/session/{session_id}
 POST   /api/v1/workplace/feedback
 GET    /api/v1/conversation/suggest/{session_id}
 GET    /api/v1/conversation/summary/{session_id}
 ```
+
+### Schema 迁移
+
+记忆导出和组织架构记录都会带 `schema_version`。导入旧版本数据时，
+WorkplaceThinker 会先通过 `WorkplaceMemoryMigrator` 自动迁移，保留旧
+`org_chart`、人物档案、关系边和图谱快照，并整理成当前版本的统一结构。
+如果想先看迁移后会变成什么，可以调用 `POST /api/v1/memory/migrate`，或用
+`harness.preview_memory_migration(memory_data)` 预览，确认后再导入。
 
 ## 产品原则
 
