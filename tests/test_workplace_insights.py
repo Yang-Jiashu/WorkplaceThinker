@@ -204,6 +204,8 @@ class WorkplaceInsightHarnessTest(unittest.IsolatedAsyncioTestCase):
 
         tiny_png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
         importer = OrgStructureImporter(vlm_func=fake_vlm)
+        importer.direct_image_limit = 4
+        importer.caption_batch_size = 2
         result = await importer.import_structure(
             text="多张组织架构截图，请合并。",
             images=[{"base64": tiny_png, "mime_type": "image/png", "name": f"org_{idx}.png"} for idx in range(5)],
@@ -214,6 +216,28 @@ class WorkplaceInsightHarnessTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(4, result["import_summary"]["vlm_call_count"])
         self.assertEqual(2, result["org_structure"]["summary"]["person_count"])
         self.assertEqual(1, result["org_structure"]["summary"]["reporting_line_count"])
+
+    async def test_org_importer_directly_uses_vlm_for_normal_image_sets(self):
+        calls = []
+
+        async def fake_vlm(prompt, image_paths):
+            calls.append(len(image_paths))
+            return """
+            {
+              "people": [
+                {"name": "测试甲", "title": "负责人", "department": "研发部"}
+              ]
+            }
+            """
+
+        tiny_png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+        importer = OrgStructureImporter(vlm_func=fake_vlm)
+        result = await importer.import_structure(
+            images=[{"base64": tiny_png, "mime_type": "image/png", "name": f"org_{idx}.png"} for idx in range(5)],
+        )
+        self.assertEqual([5], calls)
+        self.assertFalse(result["import_summary"]["chunked"])
+        self.assertEqual(1, result["import_summary"]["vlm_call_count"])
 
     async def test_org_importer_text_fallback_filters_ocr_labels(self):
         importer = OrgStructureImporter(vlm_func=None)

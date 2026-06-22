@@ -1495,7 +1495,7 @@
 
           <div class="card person-detail">
             <strong>图片 + 文本导入</strong>
-            <p class="small">优先使用 VLM 识别组织架构图；图片较多时会先分批生成 caption/OCR 摘要，再交给模型合并，避免超过上下文限制。</p>
+            <p class="small">优先把组织架构图直接交给 VLM 识别；只有特别多截图或后端配置低上下文模式时，才会分批生成 caption/OCR 摘要后合并。</p>
             <label>补充说明</label>
             <textarea id="org-import-text" style="min-height: 90px;" placeholder="例如：这是产品与平台团队组织架构，箭头表示直属汇报。"></textarea>
             <label>组织架构图片</label>
@@ -1677,7 +1677,7 @@
         document.getElementById('org').value = JSON.stringify(orgStructureToOrgChart(payload.org_structure), null, 2);
         renderOrgStructure(payload.org_structure);
         const summary = payload.import_summary || {};
-        const chunkNote = summary.chunked ? ` 已分 ${summary.caption_count || 0} 批 caption 后合并。` : '';
+        const chunkNote = summary.chunked ? ` 图片较多，已分 ${summary.caption_count || 0} 批 caption 后合并。` : '';
         document.getElementById('org-import-status').textContent = `导入完成：${summary.person_count || 0} 人，${summary.department_count || 0} 个部门，${summary.reporting_line_count || 0} 条汇报线。${chunkNote}`;
       } catch (err) {
         status.textContent = `导入失败：${err.message || err}。请检查配置里的 API 地址和后端 VLM Key。`;

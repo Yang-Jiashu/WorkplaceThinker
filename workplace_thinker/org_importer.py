@@ -23,8 +23,8 @@ from .insights import OrgPerson, WorkplaceInsightEngine, json_object_from_text, 
 
 VLMFunc = Callable[[str, Sequence[str]], Awaitable[str]]
 
-DEFAULT_DIRECT_IMAGE_LIMIT = 4
-DEFAULT_CAPTION_BATCH_SIZE = 2
+DEFAULT_DIRECT_IMAGE_LIMIT = 20
+DEFAULT_CAPTION_BATCH_SIZE = 8
 
 
 ORG_PERSON_STOPWORDS = {
