@@ -13,8 +13,11 @@ from __future__ import annotations
 import json
 import copy
 import time
+import os
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 from .migrations import (
@@ -98,14 +101,26 @@ class WorkplaceMemoryEngine:
     5. 用户反馈学习 - 根据用户确认/否定调整记忆
     6. 记忆导出/导入 - 支持记忆的持久化
     """
+
+    @staticmethod
+    def default_memory_root() -> Path:
+        return Path(
+            os.getenv("WORKPLACE_THINKER_MEMORY_ROOT")
+            or Path(__file__).resolve().parents[1] / "data" / "workplace_memory"
+        )
     
     def __init__(
         self,
         session_id: Optional[str] = None,
         use_docthinker_core: bool = True,
+        memory_root: Optional[str] = None,
+        load_existing: bool = True,
     ):
         self.session_id = session_id or f"workplace_{int(time.time())}"
         self.use_docthinker = use_docthinker_core and HAS_DOCTHINKER_MEMORY
+        self.memory_root = Path(memory_root) if memory_root else self.default_memory_root()
+        self.session_dir = self.memory_root / self._safe_session_id(self.session_id)
+        self._loading_from_disk = False
         
         # 内存中的记忆存储（当 DocThinker 不可用时的后备方案）
         self._person_profiles: Dict[str, PersonProfile] = {}
@@ -130,11 +145,73 @@ class WorkplaceMemoryEngine:
         }
         self._org_structure_versions: List[Dict[str, Any]] = []
         self._migrator = WorkplaceMemoryMigrator()
+
+        self._init_memory_folder(load_existing=load_existing)
         
         # DocThinker 记忆核心
         self._memory_core: Optional[AgentMemoryCore] = None
         if self.use_docthinker:
             self._init_docthinker_memory()
+
+    def _safe_session_id(self, session_id: str) -> str:
+        """Keep user-visible session folders portable and path-safe."""
+        safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(session_id or "").strip())
+        return safe.strip("._") or "default_session"
+
+    def _init_memory_folder(self, *, load_existing: bool) -> None:
+        """Create and optionally hydrate the fixed portable memory folder."""
+        self.session_dir.mkdir(parents=True, exist_ok=True)
+        if load_existing:
+            self.load_from_memory_folder()
+
+    def load_from_memory_folder(self) -> bool:
+        """Load this session from its fixed on-disk memory folder if present."""
+        memory_file = self.session_dir / "memory.json"
+        if not memory_file.exists():
+            return False
+        try:
+            data = json.loads(memory_file.read_text(encoding="utf-8"))
+            self._loading_from_disk = True
+            self.import_memory(data)
+            return True
+        except Exception as exc:
+            print(f"[WorkplaceThinker] Failed to load memory folder {self.session_dir}: {exc}")
+            return False
+        finally:
+            self._loading_from_disk = False
+
+    def persist_memory_folder(self) -> Path:
+        """Write the current session into a portable folder package."""
+        self.session_dir.mkdir(parents=True, exist_ok=True)
+        memory_data = self.export_memory()
+        package_files = {
+            "manifest.json": {
+                "schema_name": "workplace_migration_package",
+                "schema_version": CURRENT_MEMORY_SCHEMA_VERSION,
+                "session_id": self.session_id,
+                "updated_at": time.time(),
+                "files": [
+                    "memory.json",
+                    "org_structure.json",
+                    "person_profiles.json",
+                    "relationships.json",
+                    "graph_snapshots.json",
+                ],
+            },
+            "memory.json": memory_data,
+            "org_structure.json": memory_data.get("org_structure", {}),
+            "person_profiles.json": memory_data.get("person_profiles", {}),
+            "relationships.json": memory_data.get("relationships", {}),
+            "graph_snapshots.json": memory_data.get("graph_snapshots", []),
+        }
+        for filename, payload in package_files.items():
+            self._write_json_atomic(self.session_dir / filename, payload)
+        return self.session_dir
+
+    def _write_json_atomic(self, path: Path, payload: Any) -> None:
+        temp_path = path.with_suffix(path.suffix + ".tmp")
+        temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        temp_path.replace(path)
     
     def _init_docthinker_memory(self):
         """初始化 DocThinker 记忆核心"""
@@ -399,6 +476,9 @@ class WorkplaceMemoryEngine:
         # 保存到 DocThinker 的长期记忆
         if self.use_docthinker and self._memory_core:
             await self._save_to_docthinker_memory(analysis_result)
+
+        if not self._loading_from_disk:
+            self.persist_memory_folder()
     
     async def _save_to_docthinker_memory(self, analysis_result: Dict[str, Any]):
         """将分析结果保存到 DocThinker 的长期记忆中"""
@@ -607,6 +687,9 @@ class WorkplaceMemoryEngine:
         if "session_id" in data and not self.session_id:
             self.session_id = data["session_id"]
 
+        if not self._loading_from_disk:
+            self.persist_memory_folder()
+
     def update_org_structure(self, org_structure: Dict[str, Any]) -> Dict[str, Any]:
         """更新 session 级组织架构记忆。"""
         if not isinstance(org_structure, dict):
@@ -628,6 +711,8 @@ class WorkplaceMemoryEngine:
             "editable": True,
         }
         self._org_structure = stored
+        if not self._loading_from_disk:
+            self.persist_memory_folder()
         return self.get_org_structure()
 
     def get_org_structure(self) -> Dict[str, Any]:
@@ -903,6 +988,9 @@ class WorkplaceMemoryEngine:
                 example=feedback.get("user_note", ""),
                 confidence=0.85
             )
+
+        if not self._loading_from_disk:
+            self.persist_memory_folder()
         
         return feedback_id
 
@@ -920,6 +1008,8 @@ class WorkplaceMemoryEngine:
             "feedback_count": len(self._feedback_history),
             "use_docthinker": self.use_docthinker,
             "docthinker_available": HAS_DOCTHINKER_MEMORY,
+            "memory_root": str(self.memory_root),
+            "memory_package_dir": str(self.session_dir),
             # 图谱相关统计
             "people_count": len(self._people),
             "relationships_count": len(self._relationships),

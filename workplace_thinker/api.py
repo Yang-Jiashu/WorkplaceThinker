@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from .harness import WorkplaceInsightHarness
+from .memory_engine import WorkplaceMemoryEngine
 from .migrations import WorkplaceMemoryMigrator
 from .model_config import runtime_model_config, runtime_model_router
 
@@ -245,15 +246,30 @@ async def conversation_summary(session_id: str) -> Dict[str, Any]:
 async def list_sessions() -> Dict[str, Any]:
     """列出所有活跃会话"""
     sessions_info = []
+    seen = set()
     for sid, harness in active_sessions.items():
         stats = harness.get_memory_stats() or {}
         sessions_info.append({
             "session_id": sid,
-            "stats": stats
+            "stats": stats,
+            "source": "active",
         })
+        seen.add(sid)
+    memory_root = WorkplaceMemoryEngine.default_memory_root()
+    if memory_root.exists():
+        for session_dir in sorted(item for item in memory_root.iterdir() if item.is_dir()):
+            if session_dir.name in seen:
+                continue
+            sessions_info.append({
+                "session_id": session_dir.name,
+                "stats": {},
+                "source": "disk",
+                "memory_package_dir": str(session_dir),
+            })
     return {
         "sessions": sessions_info,
-        "count": len(sessions_info)
+        "count": len(sessions_info),
+        "memory_root": str(memory_root),
     }
 
 

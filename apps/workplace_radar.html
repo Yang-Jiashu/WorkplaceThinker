@@ -794,12 +794,12 @@
             <strong>记忆迁移</strong>
             <button onclick="closeMigrationPanel()">收起</button>
           </div>
-          <p class="small">推荐把旧版本导出的迁移包文件夹直接拖进来。系统会识别标准文件、预览 schema 升级结果，确认后再导入当前 session。</p>
+          <p class="small">记忆默认保存在固定 session 文件夹里。换版本或换机器时，直接把那个文件夹拖进来，系统会预览 schema 升级结果，确认后再导入当前 session。</p>
           <div class="migration-layout">
             <div id="migration-dropzone" class="migration-dropzone">
               <div>
-                <strong>拖入迁移文件夹</strong>
-                <p class="small">支持 manifest.json、memory.json、org_structure.json、person_profiles.json、relationships.json 和 graph_snapshots.json。</p>
+                <strong>拖入记忆文件夹</strong>
+                <p class="small">默认路径是 data/workplace_memory/&lt;session_id&gt;/；支持 manifest.json、memory.json、org_structure.json、person_profiles.json、relationships.json 和 graph_snapshots.json。</p>
               </div>
               <input id="migration-folder-input" type="file" webkitdirectory directory multiple />
               <div id="migration-file-list" class="migration-file-list">

@@ -1,5 +1,7 @@
 import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from workplace_thinker import (
     CURRENT_MEMORY_SCHEMA_VERSION,
@@ -9,6 +11,7 @@ from workplace_thinker import (
     ProviderConfig,
     WorkplaceInsightEngine,
     WorkplaceInsightHarness,
+    WorkplaceMemoryEngine,
     WorkplaceMemoryMigrator,
 )
 
@@ -310,6 +313,36 @@ class WorkplaceInsightHarnessTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, org["summary"]["reporting_line_count"])
         self.assertIn("张伟", memory_data["person_profiles"])
         self.assertTrue(memory_data["migration_history"])
+
+    async def test_memory_folder_is_portable_session_package(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            engine = WorkplaceMemoryEngine(
+                session_id="portable_session",
+                use_docthinker_core=False,
+                memory_root=temp_dir,
+            )
+            engine.update_org_structure(
+                {
+                    "people": [
+                        {"name": "测试甲", "title": "负责人", "department": "测试部门"},
+                        {"name": "测试乙", "title": "成员", "department": "测试部门", "manager": "测试甲"},
+                    ]
+                }
+            )
+
+            session_dir = Path(temp_dir) / "portable_session"
+            self.assertTrue((session_dir / "manifest.json").exists())
+            self.assertTrue((session_dir / "memory.json").exists())
+            self.assertTrue((session_dir / "org_structure.json").exists())
+
+            restored = WorkplaceMemoryEngine(
+                session_id="portable_session",
+                use_docthinker_core=False,
+                memory_root=temp_dir,
+            )
+            restored_org = restored.get_org_structure()
+            self.assertEqual(2, restored_org["summary"]["person_count"])
+            self.assertEqual(1, restored_org["summary"]["reporting_line_count"])
 
 
 class WorkplaceInsightAPITest(unittest.TestCase):

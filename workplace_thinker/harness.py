@@ -549,7 +549,13 @@ class WorkplaceInsightHarness:
         if self.enable_memory and self.memory:
             # 重新初始化记忆
             session_id = self.memory.session_id
-            self.memory = WorkplaceMemoryEngine(session_id=session_id)
+            memory_root = str(self.memory.memory_root)
+            self.memory = WorkplaceMemoryEngine(
+                session_id=session_id,
+                memory_root=memory_root,
+                load_existing=False,
+            )
+            self.memory.persist_memory_folder()
             # 更新引擎中的记忆引用
             self.engine.memory = self.memory
             return True

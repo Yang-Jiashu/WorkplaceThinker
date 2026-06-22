@@ -437,12 +437,21 @@ small registered modules instead of editing the API/UI flow. Use
 `harness.preview_memory_migration(memory_data)` to inspect the upgraded payload
 before importing it.
 
-For end users, migration is folder-based. A portable migration package can be
-dragged into the browser UI or sent to `POST /api/v1/memory/migrate` as
-`migration_package_files`. The folder may contain:
+For end users, memory is folder-based from the start. Each session is persisted
+under a fixed portable folder:
 
 ```text
-workplace-memory/
+data/workplace_memory/<session_id>/
+```
+
+`data/` is ignored by git, so local workplace memory is not committed by
+default. Set `WORKPLACE_THINKER_MEMORY_ROOT` to place these folders somewhere
+else. To move between versions or machines, copy that session folder and drag it
+into the browser UI, or send its files to `POST /api/v1/memory/migrate` as
+`migration_package_files`. The folder contains:
+
+```text
+data/workplace_memory/<session_id>/
   manifest.json
   memory.json
   org_structure.json
@@ -451,11 +460,11 @@ workplace-memory/
   graph_snapshots.json
 ```
 
-`memory.json` can hold a full export. The other files are optional slices that
-make the package easy to inspect, copy, back up, or move across versions. The
-API assembles the folder into one memory payload, reports which files were
-consumed or ignored, previews the upgraded schema, and only writes it into a
-session after `POST /api/v1/memory/import`.
+`memory.json` holds the full export. The other files are readable slices that
+make the folder easy to inspect, back up, or migrate. The API assembles the
+folder into one memory payload, reports which files were consumed or ignored,
+previews the upgraded schema, and only writes it into a session after
+`POST /api/v1/memory/import`.
 
 ## Safety Principle
 
