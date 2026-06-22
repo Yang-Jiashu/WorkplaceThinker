@@ -343,6 +343,8 @@
     .org-table-row:first-child { border-top: 0; background: #f8f6f1; color: var(--muted); font-size: 12px; font-weight: 700; }
     .dept-list { display: grid; gap: 8px; }
     .dept-item { display: flex; justify-content: space-between; gap: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #fff; }
+    .version-list { display: grid; gap: 8px; }
+    .version-item { border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 10px 12px; display: flex; justify-content: space-between; gap: 12px; }
     .org-warning { border-color: #e7c3b2; background: #fff7f0; }
     .org-editor { min-height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
     .migration-editor { min-height: 150px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
@@ -1438,6 +1440,7 @@
       const people = org.people || [];
       const lines = org.reporting_lines || [];
       const trees = org.reporting_tree || [];
+      const versions = org.versions || [];
       const method = org.storage?.import_method || org.storage?.source || '';
       const methodText = method === 'vlm' ? 'VLM 图像解析' : method === 'text_fallback' ? '文本兜底解析' : '手动/记忆数据';
       const uncertain = method === 'text_fallback' || people.some(person => !person.title || !person.department);
@@ -1458,6 +1461,17 @@
               <div class="metric"><span class="small">人员</span><strong>${Number(summary.person_count ?? people.length)}</strong></div>
               <div class="metric"><span class="small">汇报线</span><strong>${Number(summary.reporting_line_count ?? lines.length)}</strong></div>
             </div>
+            ${versions.length ? `
+              <div class="version-list">
+                <strong>历史版本</strong>
+                ${versions.slice(0, 5).map(version => `
+                  <div class="version-item">
+                    <span>${escapeHtml(version.version_id || '旧版本')}</span>
+                    <span class="small">${formatTime(version.archived_at)} · ${Number(version.summary?.person_count || 0)} 人 · ${Number(version.summary?.reporting_line_count || 0)} 条线</span>
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
           </div>
 
           <div class="org-overview-grid">
@@ -1494,8 +1508,8 @@
           </div>
 
           <div class="card person-detail">
-            <strong>图片 + 文本导入</strong>
-            <p class="small">优先把组织架构图直接交给 VLM 识别；只有特别多截图或后端配置低上下文模式时，才会分批生成 caption/OCR 摘要后合并。</p>
+            <strong>用新材料更新组织架构</strong>
+            <p class="small">上传新的组织架构图或补充文本，系统会用当前版本作为上下文更新；保存前的版本会自动进入历史版本。</p>
             <label>补充说明</label>
             <textarea id="org-import-text" style="min-height: 90px;" placeholder="例如：这是产品与平台团队组织架构，箭头表示直属汇报。"></textarea>
             <label>组织架构图片</label>
@@ -1622,11 +1636,22 @@
         document.getElementById('org').value = JSON.stringify(orgStructureToOrgChart(parsed), null, 2);
         if (currentData) currentData.org_structure = parsed;
         if (currentSessionId) {
-          await fetch(apiUrl('/api/v1/org-structure'), {
+          const response = await fetch(apiUrl('/api/v1/org-structure'), {
             method: 'POST',
             headers: {'Content-Type':'application/json'},
             body: JSON.stringify({session_id: currentSessionId, org_structure: parsed}),
           });
+          if (response.ok) {
+            const payload = await response.json();
+            if (payload.org_structure) {
+              currentData = currentData || {...fallback};
+              currentData.org_structure = payload.org_structure;
+              localStorage.setItem(ORG_DRAFT_KEY, JSON.stringify(payload.org_structure));
+              status.textContent = '已保存组织架构，上一版已进入历史版本。';
+              renderOrgStructure(payload.org_structure);
+              return;
+            }
+          }
         }
         status.textContent = '已保存组织架构，并同步到下一次分析输入。';
         renderOrgStructure(parsed);

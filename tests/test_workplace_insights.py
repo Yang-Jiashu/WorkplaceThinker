@@ -412,10 +412,28 @@ class WorkplaceInsightAPITest(unittest.TestCase):
         self.assertEqual(200, response.status_code)
         payload = response.json()
         self.assertTrue(payload["success"])
+        updated = client.post(
+            "/api/v1/org-structure",
+            json={
+                "session_id": "org_test_session",
+                "org_structure": {
+                    "departments": [{"id": "dept_platform", "name": "Platform", "people_count": 1}],
+                    "people": [{"id": "p2", "name": "王强", "title": "部门经理", "department": "Platform", "manager": ""}],
+                    "reporting_lines": [],
+                    "department_tree": [],
+                    "reporting_tree": [],
+                    "summary": {"department_count": 1, "person_count": 1, "reporting_line_count": 0},
+                },
+            },
+        )
+        self.assertEqual(200, updated.status_code)
+        self.assertTrue(updated.json()["org_structure"]["versions"])
+        self.assertEqual(1, updated.json()["org_structure"]["versions"][0]["summary"]["reporting_line_count"])
         get_response = client.get("/api/v1/org-structure/org_test_session")
         self.assertEqual(200, get_response.status_code)
         org_payload = get_response.json()["org_structure"]
-        self.assertEqual("Product", org_payload["departments"][0]["name"])
+        self.assertEqual("Platform", org_payload["departments"][0]["name"])
+        self.assertTrue(org_payload["versions"])
 
     @unittest.skipIf(TestClient is None or app is None, "fastapi is not installed")
     def test_api_org_structure_import_text_fallback(self):

@@ -11,6 +11,7 @@ WorkplaceThinker Memory Engine - 集成 DocThinker 的 Agentic Memory System
 from __future__ import annotations
 
 import json
+import copy
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -127,6 +128,7 @@ class WorkplaceMemoryEngine:
             "summary": {},
             "updated_at": None,
         }
+        self._org_structure_versions: List[Dict[str, Any]] = []
         self._migrator = WorkplaceMemoryMigrator()
         
         # DocThinker 记忆核心
@@ -507,6 +509,7 @@ class WorkplaceMemoryEngine:
                 for key, p in self._patterns.items()
             },
             "org_structure": self.get_org_structure(),
+            "org_structure_versions": self.get_org_structure_versions(),
             # ====== 图谱数据 ======
             "people": self._people,
             "relationships": {
@@ -568,6 +571,8 @@ class WorkplaceMemoryEngine:
 
         if "org_structure" in data and isinstance(data["org_structure"], dict):
             self.update_org_structure(data["org_structure"])
+        if isinstance(data.get("org_structure_versions"), list):
+            self._org_structure_versions = list(data.get("org_structure_versions") or [])[-20:]
         
         # ====== 导入图谱数据 ======
         if "people" in data:
@@ -606,6 +611,7 @@ class WorkplaceMemoryEngine:
         """更新 session 级组织架构记忆。"""
         if not isinstance(org_structure, dict):
             return self._org_structure
+        self._archive_current_org_structure()
         stored, _migration_report = self._migrator.migrate_org_structure(org_structure)
         stored["updated_at"] = time.time()
         stored.setdefault("departments", [])
@@ -622,13 +628,35 @@ class WorkplaceMemoryEngine:
             "editable": True,
         }
         self._org_structure = stored
-        return self._org_structure
+        return self.get_org_structure()
 
     def get_org_structure(self) -> Dict[str, Any]:
         """获取当前 session 的组织架构。"""
         migrated, _migration_report = self._migrator.migrate_org_structure(self._org_structure)
         self._org_structure = migrated
-        return dict(self._org_structure)
+        result = dict(self._org_structure)
+        result["versions"] = self.get_org_structure_versions()
+        return result
+
+    def get_org_structure_versions(self) -> List[Dict[str, Any]]:
+        """获取组织架构历史版本，最近的版本排在前面。"""
+        return list(reversed(self._org_structure_versions[-20:]))
+
+    def _archive_current_org_structure(self) -> None:
+        current = self._org_structure or {}
+        if not current.get("people") and not current.get("departments") and not current.get("reporting_lines"):
+            return
+        snapshot = copy.deepcopy(current)
+        snapshot.pop("versions", None)
+        self._org_structure_versions.append(
+            {
+                "version_id": f"org_v{len(self._org_structure_versions) + 1}_{int(time.time())}",
+                "archived_at": time.time(),
+                "summary": copy.deepcopy(snapshot.get("summary") or {}),
+                "org_structure": snapshot,
+            }
+        )
+        self._org_structure_versions = self._org_structure_versions[-20:]
 
     def preview_memory_migration(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """预览旧记忆导入后的新版结构，不写入当前 session。"""
