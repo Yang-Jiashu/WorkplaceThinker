@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .migration_plugins import memory_migration_steps
 
@@ -27,6 +28,83 @@ def stable_id(prefix: str, value: str) -> str:
 class WorkplaceMemoryMigrator:
     """Upgrade exported memory and org-structure payloads across versions."""
 
+    def migration_package_to_memory(
+        self,
+        files: Sequence[Dict[str, Any]],
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """Assemble a drag-and-drop migration folder into one memory payload."""
+        memory_data: Dict[str, Any] = {
+            "schema_name": "workplace_memory_export",
+            "schema_version": 1,
+        }
+        consumed_files: List[str] = []
+        ignored_files: List[str] = []
+
+        for item in files or []:
+            path = str(item.get("path") or item.get("name") or "").strip()
+            basename = path.rsplit("/", 1)[-1].lower()
+            raw_content = item.get("content")
+
+            if not basename.endswith(".json") or raw_content in (None, ""):
+                if path:
+                    ignored_files.append(path)
+                continue
+
+            try:
+                payload = json.loads(raw_content) if isinstance(raw_content, str) else raw_content
+            except Exception:
+                ignored_files.append(path)
+                continue
+
+            if isinstance(payload, dict) and payload.get("schema_name") == "workplace_memory_export":
+                memory_data.update(payload)
+                consumed_files.append(path)
+                continue
+
+            if basename in {"manifest.json", "workplace_migration.json"}:
+                if isinstance(payload, dict):
+                    memory_data["package_manifest"] = payload
+                    if payload.get("session_id") and not memory_data.get("session_id"):
+                        memory_data["session_id"] = payload.get("session_id")
+                    if payload.get("schema_version"):
+                        memory_data["schema_version"] = payload.get("schema_version")
+                consumed_files.append(path)
+                continue
+
+            if basename in {"memory.json", "workplace_memory.json"} and isinstance(payload, dict):
+                memory_data.update(payload)
+                consumed_files.append(path)
+                continue
+
+            if basename in {"org_structure.json", "organization.json", "org.json"}:
+                memory_data["org_structure"] = payload
+                consumed_files.append(path)
+                continue
+
+            if basename in {"person_profiles.json", "people.json"}:
+                memory_data["person_profiles"] = payload
+                consumed_files.append(path)
+                continue
+
+            if basename == "relationships.json":
+                memory_data["relationships"] = payload
+                consumed_files.append(path)
+                continue
+
+            if basename == "graph_snapshots.json":
+                memory_data["graph_snapshots"] = payload
+                consumed_files.append(path)
+                continue
+
+            ignored_files.append(path)
+
+        return memory_data, {
+            "schema_name": "workplace_migration_package",
+            "file_count": len(files or []),
+            "consumed_files": consumed_files,
+            "ignored_files": ignored_files,
+        }
+
     def migrate_memory(self, data: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         original_version = self._version(data)
         migrated = copy.deepcopy(data if isinstance(data, dict) else {})
@@ -36,6 +114,12 @@ class WorkplaceMemoryMigrator:
             if migration_step.applies(original_version, migrated):
                 migrated, step_names = migration_step.apply(self, migrated)
                 steps.extend(step_names)
+
+        if "org_structure" in migrated:
+            org_structure, org_report = self.migrate_org_structure(migrated.get("org_structure", {}))
+            migrated["org_structure"] = org_structure
+            if org_report["changed"] and "migrated_org_structure" not in steps:
+                steps.append("migrated_org_structure")
 
         migrated.setdefault("schema_name", "workplace_memory_export")
         migrated["schema_version"] = CURRENT_MEMORY_SCHEMA_VERSION

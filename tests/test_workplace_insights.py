@@ -1,3 +1,4 @@
+import json
 import unittest
 
 from workplace_thinker import (
@@ -473,6 +474,55 @@ class WorkplaceInsightAPITest(unittest.TestCase):
         self.assertTrue(payload["migration"]["changed"])
         self.assertEqual(CURRENT_MEMORY_SCHEMA_VERSION, payload["memory_data"]["schema_version"])
         self.assertEqual(1, payload["memory_data"]["org_structure"]["summary"]["person_count"])
+
+    @unittest.skipIf(TestClient is None or app is None, "fastapi is not installed")
+    def test_api_memory_migration_package_preview(self):
+        client = TestClient(app)
+        response = client.post(
+            "/api/v1/memory/migrate",
+            json={
+                "session_id": "migration_package_session",
+                "migration_package_files": [
+                    {
+                        "path": "workplace-memory/manifest.json",
+                        "content": json.dumps({"schema_name": "workplace_migration_package", "schema_version": 2}),
+                    },
+                    {
+                        "path": "workplace-memory/org_structure.json",
+                        "content": json.dumps(
+                            {
+                                "people": [
+                                    {
+                                        "name": "测试甲",
+                                        "title": "负责人",
+                                        "department": "测试部门",
+                                    },
+                                    {
+                                        "name": "测试乙",
+                                        "title": "成员",
+                                        "department": "测试部门",
+                                        "manager": "测试甲",
+                                    },
+                                ]
+                            },
+                            ensure_ascii=False,
+                        ),
+                    },
+                    {
+                        "path": "workplace-memory/person_profiles.json",
+                        "content": json.dumps([{"name": "测试甲", "team": "测试部门"}], ensure_ascii=False),
+                    },
+                ],
+            },
+        )
+        self.assertEqual(200, response.status_code)
+        payload = response.json()
+        self.assertTrue(payload["success"])
+        self.assertEqual(3, payload["package"]["file_count"])
+        self.assertEqual(3, len(payload["package"]["consumed_files"]))
+        self.assertEqual(CURRENT_MEMORY_SCHEMA_VERSION, payload["memory_data"]["schema_version"])
+        self.assertEqual(2, payload["memory_data"]["org_structure"]["summary"]["person_count"])
+        self.assertEqual(1, payload["memory_data"]["org_structure"]["summary"]["reporting_line_count"])
 
     @unittest.skipIf(TestClient is None or app is None, "fastapi is not installed")
     def test_home_serves_graph_ui(self):

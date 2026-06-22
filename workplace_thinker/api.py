@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from .harness import WorkplaceInsightHarness
+from .migrations import WorkplaceMemoryMigrator
 from .model_config import runtime_model_config, runtime_model_router
 
 
@@ -82,7 +83,8 @@ class MemoryImportRequest(BaseModel):
 
 class MemoryMigrateRequest(BaseModel):
     session_id: Optional[str] = None
-    memory_data: Dict[str, Any]
+    memory_data: Dict[str, Any] = Field(default_factory=dict)
+    migration_package_files: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class OrgStructureUpdateRequest(BaseModel):
@@ -346,10 +348,17 @@ async def import_memory(request: MemoryImportRequest) -> Dict[str, Any]:
 async def migrate_memory(request: MemoryMigrateRequest) -> Dict[str, Any]:
     """预览记忆 schema 迁移，不写入当前会话"""
     session_id, harness = get_or_create_session(request.session_id)
-    preview = harness.preview_memory_migration(request.memory_data) or {}
+    memory_data = request.memory_data
+    package_report: Dict[str, Any] = {}
+    if request.migration_package_files:
+        memory_data, package_report = WorkplaceMemoryMigrator().migration_package_to_memory(
+            request.migration_package_files
+        )
+    preview = harness.preview_memory_migration(memory_data) or {}
     return {
         "session_id": session_id,
         **preview,
+        "package": package_report,
         "success": bool(preview),
     }
 

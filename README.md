@@ -437,6 +437,26 @@ small registered modules instead of editing the API/UI flow. Use
 `harness.preview_memory_migration(memory_data)` to inspect the upgraded payload
 before importing it.
 
+For end users, migration is folder-based. A portable migration package can be
+dragged into the browser UI or sent to `POST /api/v1/memory/migrate` as
+`migration_package_files`. The folder may contain:
+
+```text
+workplace-memory/
+  manifest.json
+  memory.json
+  org_structure.json
+  person_profiles.json
+  relationships.json
+  graph_snapshots.json
+```
+
+`memory.json` can hold a full export. The other files are optional slices that
+make the package easy to inspect, copy, back up, or move across versions. The
+API assembles the folder into one memory payload, reports which files were
+consumed or ignored, previews the upgraded schema, and only writes it into a
+session after `POST /api/v1/memory/import`.
+
 ## Safety Principle
 
 WorkplaceThinker should make users more careful, not more paranoid.

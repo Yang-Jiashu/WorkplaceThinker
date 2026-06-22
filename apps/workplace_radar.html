@@ -348,6 +348,33 @@
     .org-warning { border-color: #e7c3b2; background: #fff7f0; }
     .org-editor { min-height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
     .migration-editor { min-height: 150px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+    .migration-layout { display: grid; grid-template-columns: .9fr 1.1fr; gap: 16px; margin: 16px 18px; }
+    .migration-dropzone {
+      border: 1px dashed #d7cfc0;
+      border-radius: 14px;
+      background: #fff;
+      padding: 16px;
+      display: grid;
+      gap: 10px;
+      min-height: 180px;
+      transition: border-color .18s ease, background .18s ease;
+    }
+    .migration-dropzone.is-dragging { border-color: var(--rust); background: #fff7f0; }
+    .migration-file-list {
+      display: grid;
+      gap: 6px;
+      max-height: 160px;
+      overflow: auto;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .migration-file-list div {
+      border: 1px solid #eee9df;
+      border-radius: 8px;
+      padding: 7px 8px;
+      background: #fffefa;
+      overflow-wrap: anywhere;
+    }
     input[type="file"] { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--surface); }
     @media (max-width: 1100px) {
       .shell, .shell.has-results {
@@ -648,6 +675,7 @@
       .tool-drawer { width: 100%; }
       .org-overview-grid { grid-template-columns: 1fr; }
       .org-table-row { grid-template-columns: 1fr; }
+      .migration-layout { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -763,13 +791,30 @@
 
         <div id="migration-panel" class="tool-drawer" style="display:none;">
           <div class="drawer-head">
-            <strong>旧数据迁移</strong>
+            <strong>记忆迁移</strong>
             <button onclick="closeMigrationPanel()">收起</button>
           </div>
-          <p class="small">粘贴旧 memory export，先预览 schema 迁移结果；确认没问题后可以导入当前 session。</p>
-          <textarea id="migration-input" class="migration-editor" placeholder='{"org_chart":[{"name":"张伟","team":"Product","reports_to":"王强"}]}'></textarea>
+          <p class="small">推荐把旧版本导出的迁移包文件夹直接拖进来。系统会识别标准文件、预览 schema 升级结果，确认后再导入当前 session。</p>
+          <div class="migration-layout">
+            <div id="migration-dropzone" class="migration-dropzone">
+              <div>
+                <strong>拖入迁移文件夹</strong>
+                <p class="small">支持 manifest.json、memory.json、org_structure.json、person_profiles.json、relationships.json 和 graph_snapshots.json。</p>
+              </div>
+              <input id="migration-folder-input" type="file" webkitdirectory directory multiple />
+              <div id="migration-file-list" class="migration-file-list">
+                <div>还没有选择迁移包。</div>
+              </div>
+            </div>
+            <div>
+              <strong>高级：直接粘贴旧 JSON</strong>
+              <p class="small">没有文件夹包时，可以粘贴旧 memory export 或旧 org_chart 数据。</p>
+              <textarea id="migration-input" class="migration-editor" placeholder='{"org_chart":[{"name":"测试甲","team":"Product","reports_to":"测试乙"}]}'></textarea>
+            </div>
+          </div>
           <div class="quick-row">
             <button onclick="previewMigration()">预览迁移</button>
+            <button onclick="clearMigrationPackage()">清空迁移包</button>
             <button class="primary" onclick="importMigratedMemory()">导入迁移结果</button>
           </div>
           <p id="migration-status" class="small"></p>
@@ -850,6 +895,7 @@
     ];
     const CONFIG_KEY = 'workplace_thinker_runtime_config';
     let migratedMemoryData = null;
+    let migrationPackageFiles = [];
     let modelSettings = null;
 
     function defaultApiBase() {
@@ -1715,6 +1761,71 @@
       renderOrgStructure(currentData?.org_structure || emptyOrgStructure());
     }
 
+    function initMigrationPackageDropzone() {
+      const input = document.getElementById('migration-folder-input');
+      const dropzone = document.getElementById('migration-dropzone');
+      if (!input || !dropzone) return;
+      input.addEventListener('change', event => readMigrationPackageFiles(event.target.files));
+      ['dragenter', 'dragover'].forEach(type => {
+        dropzone.addEventListener(type, event => {
+          event.preventDefault();
+          dropzone.classList.add('is-dragging');
+        });
+      });
+      ['dragleave', 'drop'].forEach(type => {
+        dropzone.addEventListener(type, event => {
+          event.preventDefault();
+          dropzone.classList.remove('is-dragging');
+        });
+      });
+      dropzone.addEventListener('drop', event => {
+        readMigrationPackageFiles(event.dataTransfer?.files || []);
+      });
+    }
+
+    async function readMigrationPackageFiles(fileList) {
+      const files = Array.from(fileList || []).filter(file => file.name.toLowerCase().endsWith('.json'));
+      const status = document.getElementById('migration-status');
+      if (!files.length) {
+        migrationPackageFiles = [];
+        migratedMemoryData = null;
+        renderMigrationPackageFiles();
+        status.textContent = '迁移包里没有可识别的 JSON 文件。';
+        return;
+      }
+      migrationPackageFiles = await Promise.all(files.map(async file => ({
+        path: file.webkitRelativePath || file.name,
+        name: file.name,
+        size: file.size,
+        content: await file.text(),
+      })));
+      migratedMemoryData = null;
+      document.getElementById('migration-output').value = '';
+      renderMigrationPackageFiles();
+      status.textContent = `已读取迁移包：${migrationPackageFiles.length} 个 JSON 文件。先预览，确认后再导入。`;
+    }
+
+    function renderMigrationPackageFiles() {
+      const list = document.getElementById('migration-file-list');
+      if (!list) return;
+      if (!migrationPackageFiles.length) {
+        list.innerHTML = '<div>还没有选择迁移包。</div>';
+        return;
+      }
+      list.innerHTML = migrationPackageFiles.map(file => (
+        `<div>${escapeHtml(file.path)} <span class="small">${Math.ceil((file.size || 0) / 1024)} KB</span></div>`
+      )).join('');
+    }
+
+    function clearMigrationPackage() {
+      migrationPackageFiles = [];
+      migratedMemoryData = null;
+      document.getElementById('migration-folder-input').value = '';
+      document.getElementById('migration-output').value = '';
+      document.getElementById('migration-status').textContent = '已清空迁移包。';
+      renderMigrationPackageFiles();
+    }
+
     async function previewMigration() {
       saveConfig();
       const status = document.getElementById('migration-status');
@@ -1722,21 +1833,26 @@
       status.textContent = '正在预览迁移...';
       try {
         const raw = document.getElementById('migration-input').value.trim();
-        if (!raw) {
-          status.textContent = '请先粘贴旧 memory JSON。';
+        if (!migrationPackageFiles.length && !raw) {
+          status.textContent = '请先拖入迁移文件夹，或粘贴旧 memory JSON。';
           return;
         }
-        const memoryData = JSON.parse(raw);
+        const requestBody = migrationPackageFiles.length
+          ? {session_id: currentSessionId || loadConfig().sessionId || undefined, migration_package_files: migrationPackageFiles}
+          : {session_id: currentSessionId || loadConfig().sessionId || undefined, memory_data: JSON.parse(raw)};
         const response = await fetch(apiUrl('/api/v1/memory/migrate'), {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({session_id: currentSessionId || loadConfig().sessionId || undefined, memory_data: memoryData}),
+          body: JSON.stringify(requestBody),
         });
         if (!response.ok) throw new Error(await response.text());
         const payload = await response.json();
         migratedMemoryData = payload.memory_data;
         output.value = JSON.stringify(payload.memory_data, null, 2);
-        status.textContent = `迁移预览完成：v${payload.migration?.from_version || 1} → v${payload.migration?.to_version || '?'}，步骤：${(payload.migration?.steps || ['already_current']).join('、')}`;
+        const packageNote = payload.package?.consumed_files?.length
+          ? ` 迁移包识别：${payload.package.consumed_files.length} 个文件。`
+          : '';
+        status.textContent = `迁移预览完成：v${payload.migration?.from_version || 1} → v${payload.migration?.to_version || '?'}，步骤：${(payload.migration?.steps || ['already_current']).join('、')}。${packageNote}`;
       } catch (err) {
         migratedMemoryData = null;
         status.textContent = `迁移失败：${err.message || err}`;
@@ -2007,6 +2123,7 @@
     window.addEventListener('resize', () => { if (currentData) render(currentData); });
     scrubLegacyOrgDrafts();
     initConfig();
+    initMigrationPackageDropzone();
     applySavedOrgDraft();
     if (location.protocol !== 'file:' || loadConfig().apiBase) checkConfig();
   </script>
