@@ -500,38 +500,31 @@
     }
     .send-btn { min-width: 96px; }
     .tool-drawer {
-      position: fixed;
-      right: 18px;
-      top: 86px;
-      bottom: 18px;
-      z-index: 30;
-      width: min(520px, calc(100vw - 36px));
-      max-height: none;
-      overflow: auto;
-      margin: 0;
+      width: min(980px, 100%);
+      overflow: visible;
+      margin: 0 auto;
       border: 1px solid var(--line);
-      border-radius: 16px;
+      border-radius: 18px;
       background: #fffefa;
-      padding: 18px;
-      box-shadow: 0 18px 48px rgba(41,37,32,.12);
+      padding: 0;
+      box-shadow: 0 12px 34px rgba(41,37,32,.06);
     }
     .tool-drawer .drawer-head {
       position: sticky;
-      top: -18px;
+      top: 0;
       z-index: 1;
-      margin: -18px -18px 14px;
+      margin: 0;
       padding: 16px 18px;
       border-bottom: 1px solid #ece8e0;
       background: rgba(255,254,250,.96);
       backdrop-filter: blur(10px);
     }
-    @media (min-width: 1500px) {
-      .shell.drawer-open .chat-thread { padding-right: 580px; }
-      .shell.drawer-open .composer-card {
-        width: min(820px, calc(100% - 580px));
-        margin-left: auto;
-        margin-right: 560px;
-      }
+    .tool-drawer .settings-grid,
+    .tool-drawer > p,
+    .tool-drawer > textarea,
+    .tool-drawer > .quick-row,
+    .tool-drawer > #org-structure {
+      margin: 16px 18px;
     }
     .result-drawer {
       position: fixed;
@@ -564,10 +557,7 @@
       .analysis-head { display: grid; }
       .composer-shell { padding: 10px 10px 16px; }
       .provider-fields { grid-template-columns: 1fr; }
-      .tool-drawer {
-        inset: 76px 10px 12px;
-        width: auto;
-      }
+      .tool-drawer { width: 100%; }
     }
   </style>
 </head>
@@ -579,10 +569,10 @@
         <button class="icon-btn" onclick="resetConversation()" title="新分析">＋</button>
       </div>
       <div class="search-box">搜索会话...</div>
-      <button class="nav-item active" onclick="resetConversation()">新分析</button>
-      <button class="nav-item" onclick="openOrgImport()">组织架构</button>
-      <button class="nav-item" onclick="openMigrationPanel()">记忆迁移</button>
-      <button class="nav-item" onclick="toggleSettings(true)">设置中心</button>
+      <button class="nav-item active" data-module="chat" onclick="resetConversation()">新分析</button>
+      <button class="nav-item" data-module="org" onclick="openOrgImport()">组织架构</button>
+      <button class="nav-item" data-module="migration" onclick="openMigrationPanel()">记忆迁移</button>
+      <button class="nav-item" data-module="settings" onclick="toggleSettings(true)">设置中心</button>
       <div class="history-title">最近分析</div>
       <button class="history-item" onclick="loadSample()">背锅风险示例</button>
       <button class="history-item" onclick="openOrgImport()">组织架构导入</button>
@@ -597,7 +587,7 @@
       <header class="chat-header">
         <div>
           <strong>职场关系雷达</strong>
-          <p class="small">像聊天一样输入材料，复杂工具收进下方工具栏和设置抽屉。</p>
+          <p class="small">像聊天一样输入材料，左侧切换模块，右侧直接处理任务。</p>
         </div>
         <div class="header-actions">
           <button onclick="toggleSettings(true)">设置</button>
@@ -611,7 +601,7 @@
           <div class="bubble">
             <div class="kicker">WorkplaceThinker</div>
             <h1>把职场材料丢进来，我来拆关系、责任和风险。</h1>
-            <p>你可以直接粘贴聊天记录、会议纪要、项目背景；也可以从工具栏导入组织架构图或迁移旧记忆。分析前不会展开图谱和复杂面板。</p>
+            <p>你可以直接粘贴聊天记录、会议纪要、项目背景；也可以从左侧进入组织架构、记忆迁移和设置中心。分析前不会展开图谱和复杂面板。</p>
             <div class="suggestion-row">
               <button onclick="focusMainInput()">粘贴聊天记录</button>
               <button onclick="openOrgImport()">导入组织架构图</button>
@@ -646,9 +636,7 @@
             </div>
           </div>
         </div>
-      </section>
 
-      <footer class="composer-shell">
         <div id="settings-panel" class="tool-drawer" style="display:none;">
           <div class="drawer-head">
             <strong>设置中心</strong>
@@ -706,7 +694,9 @@
           </div>
           <div id="org-structure"></div>
         </div>
+      </section>
 
+      <footer class="composer-shell">
         <div class="composer-card">
           <input id="question" class="question-line" type="text" placeholder="想确认的问题，例如：我是不是有背锅风险？" />
           <textarea id="information" class="composer-input" placeholder="发送材料：聊天记录、会议纪要、组织架构、项目背景..."></textarea>
@@ -840,6 +830,27 @@
       document.getElementById('config-summary').textContent = `API：${api} · Session：${session} · 记忆：${config.useMemory === false ? '关闭' : '开启'}`;
     }
 
+    function setActiveModule(module) {
+      document.querySelectorAll('[data-module]').forEach(item => {
+        item.classList.toggle('active', item.dataset.module === module);
+      });
+    }
+
+    function showToolPanel(panelId, module) {
+      ['settings-panel', 'migration-panel', 'org-tool-panel'].forEach(id => {
+        document.getElementById(id).style.display = id === panelId ? 'block' : 'none';
+      });
+      setActiveModule(module);
+      syncToolDrawerState();
+      document.getElementById(panelId).scrollIntoView({behavior: 'smooth', block: 'start'});
+    }
+
+    function hideToolPanel(panelId) {
+      document.getElementById(panelId).style.display = 'none';
+      setActiveModule('chat');
+      syncToolDrawerState();
+    }
+
     function syncToolDrawerState() {
       const anyOpen = ['settings-panel', 'migration-panel', 'org-tool-panel'].some(id => {
         const panel = document.getElementById(id);
@@ -850,31 +861,26 @@
 
     function toggleSettings(forceOpen = false) {
       const panel = document.getElementById('settings-panel');
-      panel.style.display = forceOpen || panel.style.display === 'none' ? 'block' : 'none';
-      if (panel.style.display === 'block') {
-        document.getElementById('migration-panel').style.display = 'none';
-        document.getElementById('org-tool-panel').style.display = 'none';
+      const shouldOpen = forceOpen || panel.style.display === 'none';
+      if (shouldOpen) {
+        showToolPanel('settings-panel', 'settings');
+        if (!modelSettings) loadModelSettings();
+      } else {
+        hideToolPanel('settings-panel');
       }
-      if (panel.style.display === 'block' && !modelSettings) loadModelSettings();
-      syncToolDrawerState();
     }
 
     function openMigrationPanel() {
-      document.getElementById('migration-panel').style.display = 'block';
-      document.getElementById('settings-panel').style.display = 'none';
-      document.getElementById('org-tool-panel').style.display = 'none';
-      syncToolDrawerState();
+      showToolPanel('migration-panel', 'migration');
       document.getElementById('migration-input').focus();
     }
 
     function closeMigrationPanel() {
-      document.getElementById('migration-panel').style.display = 'none';
-      syncToolDrawerState();
+      hideToolPanel('migration-panel');
     }
 
     function closeOrgTool() {
-      document.getElementById('org-tool-panel').style.display = 'none';
-      syncToolDrawerState();
+      hideToolPanel('org-tool-panel');
     }
 
     function resetConversation() {
@@ -882,6 +888,8 @@
       selectedPerson = '';
       peopleMode = 'directory';
       document.querySelector('.shell').classList.remove('has-results', 'show-panel');
+      ['settings-panel', 'migration-panel', 'org-tool-panel'].forEach(id => document.getElementById(id).style.display = 'none');
+      setActiveModule('chat');
       document.getElementById('analysis-message').style.display = 'none';
       document.getElementById('empty-graph').style.display = 'grid';
       document.getElementById('graph-wrap').classList.add('has-empty');
@@ -897,10 +905,7 @@
     }
 
     function openOrgImport() {
-      document.getElementById('org-tool-panel').style.display = 'block';
-      document.getElementById('settings-panel').style.display = 'none';
-      document.getElementById('migration-panel').style.display = 'none';
-      syncToolDrawerState();
+      showToolPanel('org-tool-panel', 'org');
       setView('org');
       if (!currentData) renderOrgStructure(loadOrgDraft());
       setTimeout(() => document.getElementById('org-import-text')?.focus(), 0);
