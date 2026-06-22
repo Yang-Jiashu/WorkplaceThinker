@@ -843,13 +843,23 @@
     let activeView = 'overview';
     let peopleMode = 'directory';
     let currentSessionId = '';
-    const ORG_DRAFT_KEY = 'workplace_thinker_org_structure_draft';
+    const ORG_DRAFT_KEY = 'workplace_thinker_org_structure_draft_v3';
+    const LEGACY_ORG_DRAFT_KEYS = [
+      'workplace_thinker_org_structure_draft',
+      'workplace_thinker_org_structure_draft_v2',
+    ];
     const CONFIG_KEY = 'workplace_thinker_runtime_config';
     let migratedMemoryData = null;
     let modelSettings = null;
 
     function defaultApiBase() {
       return location.protocol === 'file:' ? 'http://127.0.0.1:8000' : '';
+    }
+
+    function scrubLegacyOrgDrafts() {
+      try {
+        LEGACY_ORG_DRAFT_KEYS.forEach(key => localStorage.removeItem(key));
+      } catch {}
     }
 
     function loadConfig() {
@@ -1600,6 +1610,7 @@
     }
 
     function loadOrgDraft() {
+      scrubLegacyOrgDrafts();
       try { return JSON.parse(localStorage.getItem(ORG_DRAFT_KEY) || '{}'); } catch { return {}; }
     }
 
@@ -1673,6 +1684,7 @@
 
     function resetOrgDraft() {
       localStorage.removeItem(ORG_DRAFT_KEY);
+      scrubLegacyOrgDrafts();
       document.getElementById('org').value = '';
       if (currentData) currentData.org_structure = emptyOrgStructure();
       renderOrgStructure(currentData?.org_structure || emptyOrgStructure());
@@ -1968,6 +1980,7 @@
     function escapeAttr(v) { return String(v ?? '').replace(/[\\'"]/g, '\\$&'); }
     function formatTime(ts) { return ts ? new Date(ts * 1000).toLocaleString('zh-CN') : '未知时间'; }
     window.addEventListener('resize', () => { if (currentData) render(currentData); });
+    scrubLegacyOrgDrafts();
     initConfig();
     applySavedOrgDraft();
     if (location.protocol !== 'file:' || loadConfig().apiBase) checkConfig();
