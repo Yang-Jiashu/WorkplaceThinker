@@ -175,8 +175,8 @@ class WorkplaceInsightHarnessTest(unittest.IsolatedAsyncioTestCase):
     async def test_model_router_fails_over_to_next_provider(self):
         manager = ModelConfigManager()
         manager.providers = [
-            ProviderConfig(id="bad", label="Bad", api_key="bad-key", priority=1, supports_vision=False),
-            ProviderConfig(id="good", label="Good", api_key="good-key", priority=2, supports_vision=False),
+            ProviderConfig(id="bad", label="Bad", api_key="bad-key", model="bad-model", priority=1),
+            ProviderConfig(id="good", label="Good", api_key="good-key", model="good-model", priority=2),
         ]
         router = ModelRouter(manager)
         calls = []
@@ -265,11 +265,12 @@ class WorkplaceInsightAPITest(unittest.TestCase):
                 "active_template_id": "workplace_politics",
                 "providers": [
                     {
-                        "id": "openai",
+                        "id": "deepseek",
                         "enabled": True,
-                        "priority": 7,
-                        "chat_model": "gpt-4o-mini",
-                        "vision_model": "gpt-4o-mini",
+                        "base_url": "https://api.deepseek.com",
+                        "api_key": "sk-test-key-1234",
+                        "model": "deepseek-chat",
+                        "params": {"temperature": 0.2, "max_tokens": 1024},
                     }
                 ],
             },
@@ -278,8 +279,11 @@ class WorkplaceInsightAPITest(unittest.TestCase):
         settings = updated.json()["settings"]
         self.assertFalse(settings["auto_failover"])
         self.assertEqual("workplace_politics", settings["active_template_id"])
-        openai_provider = [p for p in settings["providers"] if p["id"] == "openai"][0]
-        self.assertEqual(7, openai_provider["priority"])
+        deepseek_provider = [p for p in settings["providers"] if p["id"] == "deepseek"][0]
+        self.assertEqual("https://api.deepseek.com", deepseek_provider["base_url"])
+        self.assertEqual("deepseek-chat", deepseek_provider["model"])
+        self.assertEqual(1024, deepseek_provider["params"]["max_tokens"])
+        self.assertEqual("sk-t...1234", deepseek_provider["api_key"])
 
     @unittest.skipIf(TestClient is None or app is None, "fastapi is not installed")
     def test_api_raw_analyze_endpoint(self):

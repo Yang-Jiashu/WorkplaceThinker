@@ -152,7 +152,7 @@ async def get_runtime_config() -> Dict[str, Any]:
         },
         "runtime": {
             "vlm_configured": bool(vision_providers),
-            "vlm_model": vision_providers[0].vision_model if vision_providers else "",
+            "vlm_model": vision_providers[0].model if vision_providers else "",
             "model_settings": runtime_model_config.safe_dict(),
         },
     }

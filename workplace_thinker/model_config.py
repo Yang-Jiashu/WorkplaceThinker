@@ -25,23 +25,23 @@ def _mask_key(value: str) -> str:
 class ProviderConfig:
     id: str
     label: str
-    kind: str = "openai_compatible"
     base_url: str = "https://api.openai.com/v1"
     api_key_env: str = "OPENAI_API_KEY"
     api_key: str = ""
-    chat_model: str = "gpt-4o-mini"
-    vision_model: str = "gpt-4o-mini"
+    model: str = "gpt-4o-mini"
     enabled: bool = True
     priority: int = 10
     timeout_seconds: float = 45.0
-    temperature: float = 0.2
-    max_tokens: int = 2048
-    supports_vision: bool = True
-    supports_chat: bool = True
-    extra_body: Dict[str, Any] = field(default_factory=dict)
+    params: Dict[str, Any] = field(default_factory=dict)
 
     def resolved_api_key(self) -> str:
         return self.api_key or os.getenv(self.api_key_env, "")
+
+    def endpoint(self) -> str:
+        endpoint = self.base_url.rstrip("/")
+        if not endpoint.endswith("/chat/completions"):
+            endpoint = f"{endpoint}/chat/completions"
+        return endpoint
 
     def safe_dict(self) -> Dict[str, Any]:
         data = self.__dict__.copy()
@@ -86,52 +86,29 @@ DEFAULT_TEMPLATES: List[ChatTemplate] = [
 def default_providers() -> List[ProviderConfig]:
     return [
         ProviderConfig(
-            id="openai",
-            label="OpenAI",
-            base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-            api_key_env="OPENAI_API_KEY",
-            chat_model=os.getenv("OPENAI_MODEL", os.getenv("LLM_MODEL", "gpt-4o-mini")),
-            vision_model=os.getenv("VLM_MODEL", "gpt-4o-mini"),
+            id="deepseek",
+            label="DeepSeek",
+            base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+            api_key_env="DEEPSEEK_API_KEY",
+            model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
             priority=10,
         ),
         ProviderConfig(
-            id="llm_binding",
-            label="OpenAI-Compatible",
-            base_url=os.getenv("LLM_BINDING_HOST", os.getenv("LLM_VLM_HOST", "https://api.openai.com/v1")),
-            api_key_env="LLM_BINDING_API_KEY",
-            chat_model=os.getenv("LLM_MODEL", "gpt-4o-mini"),
-            vision_model=os.getenv("VLM_MODEL", os.getenv("LLM_MODEL", "gpt-4o-mini")),
+            id="siliconflow",
+            label="SiliconFlow",
+            base_url=os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1"),
+            api_key_env="SILICONFLOW_API_KEY",
+            model=os.getenv("SILICONFLOW_MODEL", "deepseek-ai/DeepSeek-V3"),
             priority=20,
         ),
         ProviderConfig(
-            id="qwen",
-            label="Qwen / DashScope compatible",
-            base_url=os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
-            api_key_env="DASHSCOPE_API_KEY",
-            chat_model=os.getenv("QWEN_MODEL", "qwen-plus"),
-            vision_model=os.getenv("QWEN_VLM_MODEL", "qwen-vl-max"),
+            id="openai_compatible",
+            label="OpenAI-compatible",
+            base_url=os.getenv("LLM_BINDING_HOST", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")),
+            api_key_env=os.getenv("LLM_BINDING_API_KEY_ENV", "LLM_BINDING_API_KEY"),
+            api_key=os.getenv("LLM_BINDING_API_KEY", ""),
+            model=os.getenv("LLM_MODEL", os.getenv("OPENAI_MODEL", "gpt-4o-mini")),
             priority=30,
-            extra_body={"enable_thinking": False},
-        ),
-        ProviderConfig(
-            id="deepseek",
-            label="DeepSeek",
-            base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
-            api_key_env="DEEPSEEK_API_KEY",
-            chat_model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
-            vision_model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
-            priority=40,
-            supports_vision=False,
-        ),
-        ProviderConfig(
-            id="ollama",
-            label="Ollama local",
-            base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1"),
-            api_key_env="OLLAMA_API_KEY",
-            api_key=os.getenv("OLLAMA_API_KEY", "ollama"),
-            chat_model=os.getenv("OLLAMA_MODEL", "llama3.1"),
-            vision_model=os.getenv("OLLAMA_VLM_MODEL", "llava"),
-            priority=50,
         ),
     ]
 
@@ -171,11 +148,29 @@ class ModelConfigManager:
                 if not provider_id:
                     continue
                 provider = by_id.get(provider_id) or ProviderConfig(id=provider_id, label=provider_id)
-                for key in ProviderConfig.__dataclass_fields__:
-                    if key in {"id"}:
-                        continue
-                    if key in item:
-                        setattr(provider, key, item[key])
+                if item.get("label"):
+                    provider.label = str(item["label"])
+                if "enabled" in item:
+                    provider.enabled = bool(item["enabled"])
+                if "priority" in item:
+                    provider.priority = int(item["priority"])
+                if "timeout_seconds" in item:
+                    provider.timeout_seconds = float(item["timeout_seconds"])
+                if item.get("base_url") or item.get("url"):
+                    provider.base_url = str(item.get("base_url") or item.get("url")).strip()
+                if item.get("api_key_env"):
+                    provider.api_key_env = str(item["api_key_env"]).strip()
+                if "api_key" in item:
+                    api_key = str(item.get("api_key") or "").strip()
+                    if api_key and set(api_key) != {"*"} and "..." not in api_key:
+                        provider.api_key = api_key
+                if item.get("model"):
+                    provider.model = str(item["model"]).strip()
+                if item.get("chat_model") and not item.get("model"):
+                    provider.model = str(item["chat_model"]).strip()
+                params = item.get("params", item.get("official_params", item.get("extra_body")))
+                if isinstance(params, dict):
+                    provider.params = params
                 by_id[provider_id] = provider
             self.providers = list(by_id.values())
 
@@ -204,11 +199,7 @@ class ModelConfigManager:
         return self.templates[0]
 
     def ordered_providers(self, *, vision: bool = False) -> List[ProviderConfig]:
-        providers = [
-            provider
-            for provider in self.providers
-            if provider.enabled and provider.resolved_api_key() and (provider.supports_vision if vision else provider.supports_chat)
-        ]
+        providers = [provider for provider in self.providers if provider.enabled and provider.resolved_api_key() and provider.model]
         return sorted(providers, key=lambda item: item.priority)
 
 
@@ -283,27 +274,16 @@ class ModelRouter:
             for path in images:
                 content.append(self._image_part(path))
 
-        model = provider.vision_model if vision else provider.chat_model
         payload: Dict[str, Any] = {
-            "model": model,
+            "model": provider.model,
             "messages": payload_messages,
-            "temperature": float(provider.temperature),
-            "max_tokens": int(provider.max_tokens),
         }
-        payload.update(provider.extra_body or {})
-        if "api.openai.com" in provider.base_url:
-            payload.pop("enable_thinking", None)
-        if str(model or "").lower().startswith("gpt-5"):
-            payload["max_completion_tokens"] = max(int(provider.max_tokens), 600)
-            payload.pop("max_tokens", None)
+        payload.update(provider.params or {})
 
-        endpoint = provider.base_url.rstrip("/")
-        if not endpoint.endswith("/chat/completions"):
-            endpoint = f"{endpoint}/chat/completions"
         headers = {"Authorization": f"Bearer {provider.resolved_api_key()}", "Content-Type": "application/json"}
         timeout = aiohttp.ClientTimeout(total=float(provider.timeout_seconds))
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(endpoint, headers=headers, data=json.dumps(payload), timeout=timeout) as response:
+            async with session.post(provider.endpoint(), headers=headers, data=json.dumps(payload), timeout=timeout) as response:
                 text = await response.text()
                 if response.status >= 400:
                     raise RuntimeError(f"{response.status}: {text[:500]}")

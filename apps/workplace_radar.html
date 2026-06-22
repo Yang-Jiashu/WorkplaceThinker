@@ -642,7 +642,8 @@
                 <strong>模型路由</strong>
                 <span id="failover-status" class="status-pill">自动切换</span>
               </div>
-              <label class="check-row"><input id="model-auto-failover" type="checkbox" checked /> API 不可用时自动切换到下一个 provider</label>
+              <p class="small">每个平台只需要模型名称、API URL 和 API Key；temperature、max_tokens、enable_thinking 等官方参数写在 JSON 里。</p>
+              <label class="check-row"><input id="model-auto-failover" type="checkbox" checked /> 当前 API 不可用时自动切换到下一个配置</label>
               <label>聊天模板</label>
               <select id="model-template"></select>
               <div id="provider-list"></div>
@@ -652,7 +653,7 @@
               </div>
             </div>
           </div>
-          <p id="runtime-status" class="small">VLM Key 在后端环境变量配置：VLM_API_KEY 或 OPENAI_API_KEY。</p>
+          <p id="runtime-status" class="small">DeepSeek 示例 URL：https://api.deepseek.com；SiliconFlow 示例 URL：https://api.siliconflow.cn/v1。</p>
         </div>
 
         <div id="migration-panel" class="tool-drawer" style="display:none;">
@@ -914,38 +915,38 @@
             <strong>${escapeHtml(provider.label || provider.id)}</strong>
             <span class="status-pill ${provider.configured ? 'ok' : 'warn'}">${provider.configured ? '已配置' : '缺少 Key'}</span>
           </div>
-          <label class="check-row"><input class="provider-enabled" type="checkbox" ${provider.enabled ? 'checked' : ''} /> 启用</label>
+          <label class="check-row"><input class="provider-enabled" type="checkbox" ${provider.enabled ? 'checked' : ''} /> 启用这个模型配置</label>
           <div class="provider-fields">
-            <label>优先级<input class="provider-priority" type="number" value="${Number(provider.priority || 10)}" /></label>
-            <label>超时秒数<input class="provider-timeout" type="number" value="${Number(provider.timeout_seconds || 45)}" /></label>
-            <label>Base URL<input class="provider-base-url" type="url" value="${escapeAttr(provider.base_url || '')}" /></label>
-            <label>Key 环境变量<input class="provider-key-env" type="text" value="${escapeAttr(provider.api_key_env || '')}" /></label>
-            <label>聊天模型<input class="provider-chat-model" type="text" value="${escapeAttr(provider.chat_model || '')}" /></label>
-            <label>视觉模型<input class="provider-vision-model" type="text" value="${escapeAttr(provider.vision_model || '')}" /></label>
-            <label>温度<input class="provider-temperature" type="number" step="0.1" value="${Number(provider.temperature ?? 0.2)}" /></label>
-            <label>Max tokens<input class="provider-max-tokens" type="number" value="${Number(provider.max_tokens || 2048)}" /></label>
+            <label>模型名称<input class="provider-model" type="text" value="${escapeAttr(provider.model || '')}" placeholder="deepseek-chat" /></label>
+            <label>API URL<input class="provider-base-url" type="url" value="${escapeAttr(provider.base_url || '')}" placeholder="https://api.deepseek.com" /></label>
+            <label>API Key<input class="provider-api-key" type="password" value="" placeholder="${provider.configured ? '留空保留当前 Key' : 'sk-...'}" /></label>
+            <label>官方参数 JSON<textarea class="provider-params" rows="3" placeholder='{"temperature":0.2,"max_tokens":2048}'>${escapeHtml(JSON.stringify(provider.params || {}, null, 2))}</textarea></label>
           </div>
-          <label class="check-row"><input class="provider-supports-chat" type="checkbox" ${provider.supports_chat ? 'checked' : ''} /> 支持聊天</label>
-          <label class="check-row"><input class="provider-supports-vision" type="checkbox" ${provider.supports_vision ? 'checked' : ''} /> 支持图片/VLM</label>
+          <p class="small">图片和文本共用这个模型；如果模型不支持图片，开启自动切换后会尝试下一个配置。</p>
         </div>
       `).join('');
     }
 
     function collectModelSettings() {
-      const providers = Array.from(document.querySelectorAll('[data-provider-id]')).map(row => ({
-        id: row.dataset.providerId,
-        enabled: row.querySelector('.provider-enabled').checked,
-        priority: Number(row.querySelector('.provider-priority').value || 10),
-        timeout_seconds: Number(row.querySelector('.provider-timeout').value || 45),
-        base_url: row.querySelector('.provider-base-url').value.trim(),
-        api_key_env: row.querySelector('.provider-key-env').value.trim(),
-        chat_model: row.querySelector('.provider-chat-model').value.trim(),
-        vision_model: row.querySelector('.provider-vision-model').value.trim(),
-        temperature: Number(row.querySelector('.provider-temperature').value || 0.2),
-        max_tokens: Number(row.querySelector('.provider-max-tokens').value || 2048),
-        supports_chat: row.querySelector('.provider-supports-chat').checked,
-        supports_vision: row.querySelector('.provider-supports-vision').checked,
-      }));
+      const providers = Array.from(document.querySelectorAll('[data-provider-id]')).map(row => {
+        const paramsRaw = row.querySelector('.provider-params').value.trim();
+        let params = {};
+        if (paramsRaw) {
+          try {
+            params = JSON.parse(paramsRaw);
+          } catch (err) {
+            throw new Error(`${row.dataset.providerId} 的官方参数 JSON 格式不对`);
+          }
+        }
+        return {
+          id: row.dataset.providerId,
+          enabled: row.querySelector('.provider-enabled').checked,
+          base_url: row.querySelector('.provider-base-url').value.trim(),
+          api_key: row.querySelector('.provider-api-key').value.trim(),
+          model: row.querySelector('.provider-model').value.trim(),
+          params,
+        };
+      });
       return {
         providers,
         active_template_id: document.getElementById('model-template').value,
