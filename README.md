@@ -430,7 +430,10 @@ Memory exports and organization-structure records include `schema_version`.
 When old exports are imported, WorkplaceThinker runs them through
 `WorkplaceMemoryMigrator` first, preserving legacy `org_chart`, person
 profiles, relationships, and graph snapshots while normalizing them into the
-current contracts. Use `POST /api/v1/memory/migrate` or
+current contracts. Concrete version steps live in
+`workplace_thinker/migration_plugins/`, so future migrations can be added as
+small registered modules instead of editing the API/UI flow. Use
+`POST /api/v1/memory/migrate` or
 `harness.preview_memory_migration(memory_data)` to inspect the upgraded payload
 before importing it.
 

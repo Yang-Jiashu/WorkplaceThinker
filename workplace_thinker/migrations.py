@@ -12,6 +12,8 @@ import hashlib
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+from .migration_plugins import memory_migration_steps
+
 
 CURRENT_MEMORY_SCHEMA_VERSION = 2
 CURRENT_ORG_STRUCTURE_SCHEMA_VERSION = 2
@@ -30,9 +32,10 @@ class WorkplaceMemoryMigrator:
         migrated = copy.deepcopy(data if isinstance(data, dict) else {})
         steps: List[str] = []
 
-        if original_version < 2:
-            migrated, v1_steps = self._memory_v1_to_v2(migrated)
-            steps.extend(v1_steps)
+        for migration_step in memory_migration_steps():
+            if migration_step.applies(original_version, migrated):
+                migrated, step_names = migration_step.apply(self, migrated)
+                steps.extend(step_names)
 
         migrated.setdefault("schema_name", "workplace_memory_export")
         migrated["schema_version"] = CURRENT_MEMORY_SCHEMA_VERSION
@@ -135,35 +138,6 @@ class WorkplaceMemoryMigrator:
     def preview_memory_migration(self, data: Dict[str, Any]) -> Dict[str, Any]:
         migrated, report = self.migrate_memory(data)
         return {"migration": report, "memory_data": migrated}
-
-    def _memory_v1_to_v2(self, data: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
-        steps: List[str] = []
-        if isinstance(data.get("person_profiles"), list):
-            data["person_profiles"] = {
-                item.get("name", f"person_{idx}"): item
-                for idx, item in enumerate(data["person_profiles"])
-                if isinstance(item, dict)
-            }
-            steps.append("converted_person_profiles_list_to_map")
-
-        if isinstance(data.get("relationships"), list):
-            data["relationships"] = {
-                f"{item.get('source', '')}|{item.get('target', '')}|{item.get('relationship_type', item.get('type', 'related_to'))}": item
-                for item in data["relationships"]
-                if isinstance(item, dict)
-            }
-            steps.append("converted_relationships_list_to_map")
-
-        if "org_chart" in data and "org_structure" not in data:
-            data["org_structure"] = {"people": data.get("org_chart") or []}
-            steps.append("promoted_org_chart_to_org_structure")
-
-        org_structure, org_report = self.migrate_org_structure(data.get("org_structure", {}))
-        data["org_structure"] = org_structure
-        if org_report["changed"]:
-            steps.append("migrated_org_structure")
-
-        return data, steps
 
     def _normalize_people(self, people: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         normalized: Dict[str, Dict[str, Any]] = {}
