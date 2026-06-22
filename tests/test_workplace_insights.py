@@ -177,6 +177,44 @@ class WorkplaceInsightHarnessTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("张伟", org["reporting_tree"][0]["children"][0]["name"])
         self.assertTrue(result["import_summary"]["vlm_used"])
 
+    async def test_org_importer_chunks_many_images_into_captions(self):
+        calls = []
+
+        async def fake_vlm(prompt, image_paths):
+            calls.append({"prompt": prompt, "image_count": len(image_paths)})
+            if image_paths:
+                idx = len(calls)
+                return f"""
+                {{
+                  "people": [{{"name": "测试{idx}", "title": "成员", "department": "研发部"}}],
+                  "caption": "第 {idx} 批组织架构截图"
+                }}
+                """
+            return """
+            {
+              "people": [
+                {"name": "测试1", "title": "负责人", "department": "研发部"},
+                {"name": "测试2", "title": "成员", "department": "研发部"}
+              ],
+              "reporting_lines": [
+                {"source_name": "测试2", "target_name": "测试1", "type": "formal_reports_to"}
+              ]
+            }
+            """
+
+        tiny_png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+        importer = OrgStructureImporter(vlm_func=fake_vlm)
+        result = await importer.import_structure(
+            text="多张组织架构截图，请合并。",
+            images=[{"base64": tiny_png, "mime_type": "image/png", "name": f"org_{idx}.png"} for idx in range(5)],
+        )
+        self.assertEqual([2, 2, 1, 0], [call["image_count"] for call in calls])
+        self.assertTrue(result["import_summary"]["chunked"])
+        self.assertEqual(3, result["import_summary"]["caption_count"])
+        self.assertEqual(4, result["import_summary"]["vlm_call_count"])
+        self.assertEqual(2, result["org_structure"]["summary"]["person_count"])
+        self.assertEqual(1, result["org_structure"]["summary"]["reporting_line_count"])
+
     async def test_org_importer_text_fallback_filters_ocr_labels(self):
         importer = OrgStructureImporter(vlm_func=None)
         result = await importer.import_structure(

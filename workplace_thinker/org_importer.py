@@ -23,6 +23,9 @@ from .insights import OrgPerson, WorkplaceInsightEngine, json_object_from_text, 
 
 VLMFunc = Callable[[str, Sequence[str]], Awaitable[str]]
 
+DEFAULT_DIRECT_IMAGE_LIMIT = 4
+DEFAULT_CAPTION_BATCH_SIZE = 2
+
 
 ORG_PERSON_STOPWORDS = {
     "组织架构",
@@ -80,6 +83,8 @@ class OrgStructureImporter:
     ) -> None:
         self.vlm_func = vlm_func
         self.engine = engine or WorkplaceInsightEngine(enable_memory=False)
+        self.direct_image_limit = max(1, int(os.getenv("WORKPLACE_ORG_DIRECT_IMAGE_LIMIT", DEFAULT_DIRECT_IMAGE_LIMIT)))
+        self.caption_batch_size = max(1, int(os.getenv("WORKPLACE_ORG_CAPTION_BATCH_SIZE", DEFAULT_CAPTION_BATCH_SIZE)))
 
     async def import_structure(
         self,
@@ -92,17 +97,28 @@ class OrgStructureImporter:
         image_paths = self._materialize_images(images)
         raw_vlm = ""
         vlm_error = ""
+        caption_outputs: List[str] = []
+        vlm_call_count = 0
 
         if use_vlm and image_paths:
             try:
-                raw_vlm = await self._call_vlm(text=text, image_paths=image_paths)
+                if len(image_paths) > self.direct_image_limit:
+                    caption_outputs = await self._caption_image_batches(text=text, image_paths=image_paths)
+                    vlm_call_count += len(caption_outputs)
+                    raw_vlm = await self._call_vlm(text=self._caption_merge_text(text, caption_outputs), image_paths=[])
+                    vlm_call_count += 1
+                else:
+                    raw_vlm = await self._call_vlm(text=text, image_paths=image_paths)
+                    vlm_call_count += 1
             except Exception as exc:
                 vlm_error = str(exc)
 
         extracted = self._parse_vlm_payload(raw_vlm) if raw_vlm else {}
+        if not extracted and caption_outputs:
+            extracted = self._merge_caption_payloads(caption_outputs)
         org_chart = self._normalize_people(extracted.get("people") or extracted.get("org_chart") or [])
         org_chart = self._apply_reporting_lines(org_chart, extracted.get("reporting_lines") or [])
-        if self._looks_like_org_text(text):
+        if not org_chart and self._looks_like_org_text(text):
             org_chart.extend(self._extract_org_chart_from_text(text))
 
         if not org_chart and existing_org_structure:
@@ -140,6 +156,9 @@ class OrgStructureImporter:
                 "text_used": bool(str(text or "").strip()),
                 "vlm_used": bool(raw_vlm),
                 "vlm_error": vlm_error,
+                "chunked": bool(caption_outputs),
+                "caption_count": len(caption_outputs),
+                "vlm_call_count": vlm_call_count,
                 "person_count": len(org_structure.get("people", [])),
                 "department_count": len(org_structure.get("departments", [])),
                 "reporting_line_count": len(org_structure.get("reporting_lines", [])),
@@ -202,6 +221,95 @@ class OrgStructureImporter:
             )
         finally:
             await client.close()
+
+    async def _caption_image_batches(self, *, text: str, image_paths: Sequence[str]) -> List[str]:
+        captions: List[str] = []
+        for start in range(0, len(image_paths), self.caption_batch_size):
+            batch = list(image_paths[start:start + self.caption_batch_size])
+            prompt = self._build_caption_prompt(
+                text=text,
+                batch_index=(start // self.caption_batch_size) + 1,
+                batch_count=(len(image_paths) + self.caption_batch_size - 1) // self.caption_batch_size,
+            )
+            captions.append(await self._generate_with_prompt(prompt=prompt, image_paths=batch))
+        return captions
+
+    async def _generate_with_prompt(self, *, prompt: str, image_paths: Sequence[str]) -> str:
+        if self.vlm_func:
+            return await self.vlm_func(prompt, image_paths)
+
+        api_key = os.getenv("VLM_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("LLM_BINDING_API_KEY")
+        if not api_key:
+            raise RuntimeError("No VLM API key configured. Set VLM_API_KEY or OPENAI_API_KEY.")
+
+        try:
+            from docthinker.auto_thinking.vlm_client import VLMClient
+        except Exception as exc:
+            raise RuntimeError(f"VLM client is not available: {exc}") from exc
+
+        client = VLMClient(
+            api_key=api_key,
+            api_base=os.getenv("LLM_VLM_HOST") or os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1",
+            model=os.getenv("VLM_MODEL") or "gpt-4o-mini",
+        )
+        try:
+            return await client.generate(
+                prompt,
+                images=list(image_paths),
+                system_prompt=ORG_IMPORT_SYSTEM_PROMPT,
+                max_tokens=2048,
+                temperature=0.0,
+            )
+        finally:
+            await client.close()
+
+    def _build_caption_prompt(self, *, text: str, batch_index: int, batch_count: int) -> str:
+        return f"""
+这是组织架构导入的第 {batch_index}/{batch_count} 批图片。请只做本批图片的 caption/OCR 摘要，不要尝试补全全局组织架构。
+输出 JSON，不要 markdown：
+{{
+  "batch_index": {batch_index},
+  "people": [
+    {{"name": "可见姓名", "title": "可见岗位/职级", "department": "可见部门/团队", "manager": "可见直属上级姓名"}}
+  ],
+  "reporting_lines": [
+    {{"source_name": "下属姓名", "target_name": "上级姓名", "type": "formal_reports_to"}}
+  ],
+  "caption": "用简短中文描述本批图片看到的组织结构",
+  "notes": ["看不清或跨页需要确认的点"]
+}}
+
+规则：
+1. 只描述本批图片中可见的信息。
+2. 不要根据前后批次猜测缺失姓名或汇报线。
+3. 看不清就写 notes。
+
+用户补充文本：
+{text or "无"}
+""".strip()
+
+    def _caption_merge_text(self, text: str, captions: Sequence[str]) -> str:
+        caption_text = "\n\n".join(f"批次 {idx + 1} caption:\n{caption}" for idx, caption in enumerate(captions))
+        return f"""
+请根据下面的多批图片 caption/OCR 摘要，合并成最终组织架构 JSON。必须去重，不要编造。
+
+用户补充文本：
+{text or "无"}
+
+多批 caption：
+{caption_text}
+""".strip()
+
+    def _merge_caption_payloads(self, captions: Sequence[str]) -> Dict[str, Any]:
+        people: List[Dict[str, Any]] = []
+        reporting_lines: List[Dict[str, Any]] = []
+        notes: List[str] = []
+        for raw in captions:
+            payload = self._parse_vlm_payload(raw)
+            people.extend(payload.get("people") or payload.get("org_chart") or [])
+            reporting_lines.extend(payload.get("reporting_lines") or [])
+            notes.extend(str(item) for item in payload.get("notes") or [])
+        return {"people": people, "reporting_lines": reporting_lines, "notes": notes}
 
     def _build_prompt(self, text: str) -> str:
         return f"""
