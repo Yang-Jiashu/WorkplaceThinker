@@ -276,173 +276,457 @@
       .graph-wrap { position: relative; height: 560px; inset: auto; }
       .side { max-height: none; }
     }
+
+    /* Chat-style product shell */
+    .app-shell,
+    .app-shell.has-results {
+      width: 100%;
+      min-height: 100vh;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      grid-template-columns: 292px minmax(0, 1fr);
+      grid-template-areas: "nav chat";
+      gap: 0;
+      background: #f7f7f4;
+    }
+    .chat-sidebar {
+      grid-area: nav;
+      height: 100vh;
+      position: sticky;
+      top: 0;
+      border-right: 1px solid #e4e1da;
+      background: #f2f2ef;
+      padding: 14px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .sidebar-top, .sidebar-foot, .chat-header, .composer-toolbar, .drawer-head, .analysis-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .sidebar-brand {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--ink);
+      color: var(--surface);
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      letter-spacing: .02em;
+    }
+    .icon-btn {
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border-radius: 50%;
+      font-size: 20px;
+      line-height: 1;
+    }
+    .search-box {
+      border: 1px solid #e2dfd8;
+      border-radius: 14px;
+      background: #fff;
+      color: #a09a91;
+      padding: 12px 14px;
+      margin: 6px 0 12px;
+    }
+    .nav-item, .history-item {
+      width: 100%;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      text-align: left;
+      padding: 11px 12px;
+      font-size: 14px;
+    }
+    .nav-item.active, .history-item:hover {
+      background: #fff;
+      box-shadow: 0 1px 0 rgba(0,0,0,.04);
+    }
+    .history-title {
+      margin: 22px 12px 6px;
+      color: #a09a91;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .sidebar-foot {
+      margin-top: auto;
+      border-top: 1px solid #e4e1da;
+      padding-top: 12px;
+    }
+    .chat-main {
+      grid-area: chat;
+      min-height: 100vh;
+      border: 0;
+      border-radius: 0;
+      background: #fff;
+      display: grid;
+      grid-template-rows: 72px minmax(0, 1fr) auto;
+      overflow: hidden;
+    }
+    .chat-header {
+      padding: 0 28px;
+      border-bottom: 1px solid #ece8e0;
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(12px);
+    }
+    .chat-header p { margin: 2px 0 0; }
+    .header-actions { display: flex; gap: 8px; }
+    .chat-thread {
+      overflow-y: auto;
+      padding: 28px 24px 160px;
+      display: grid;
+      align-content: start;
+      gap: 18px;
+    }
+    .message {
+      width: min(980px, 100%);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      gap: 12px;
+    }
+    .avatar {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: #292520;
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      margin-top: 4px;
+    }
+    .bubble {
+      border: 1px solid #ebe6dc;
+      border-radius: 18px;
+      background: #fffefa;
+      padding: 18px 20px;
+      box-shadow: 0 12px 34px rgba(41,37,32,.06);
+    }
+    .welcome-message .bubble {
+      border: 0;
+      box-shadow: none;
+      background: transparent;
+      padding-top: 8px;
+    }
+    .welcome-message h1 {
+      max-width: 720px;
+      font-size: 36px;
+    }
+    .welcome-message p { max-width: 740px; }
+    .suggestion-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .analysis-message { width: min(1080px, 100%); }
+    .analysis-bubble { padding: 0; overflow: hidden; }
+    .analysis-head {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    .compact-metrics {
+      width: 280px;
+      margin: 0;
+    }
+    .compact-metrics .metric {
+      padding: 8px;
+      border-radius: 10px;
+    }
+    .compact-metrics .metric strong { font-size: 20px; }
+    .analysis-bubble .graph-wrap {
+      position: relative;
+      inset: auto;
+      height: 520px;
+      border: 0;
+    }
+    .analysis-bubble .empty-graph { min-height: 420px; }
+    .composer-shell {
+      position: sticky;
+      bottom: 0;
+      padding: 12px 24px 22px;
+      background: linear-gradient(rgba(255,255,255,0), #fff 18%);
+    }
+    .composer-card {
+      width: min(980px, 100%);
+      margin: 0 auto;
+      border: 1px solid #d9e2ff;
+      border-radius: 22px;
+      background: #fff;
+      box-shadow: 0 12px 38px rgba(40,70,120,.10);
+      padding: 12px;
+    }
+    .question-line {
+      border: 0 !important;
+      border-bottom: 1px solid #eee9df !important;
+      border-radius: 0 !important;
+      padding: 8px 10px !important;
+      font-weight: 700;
+    }
+    .composer-input {
+      min-height: 74px;
+      max-height: 220px;
+      border: 0;
+      resize: vertical;
+      padding: 12px 10px;
+      font-size: 15px;
+    }
+    .composer-input:focus, .question-line:focus {
+      box-shadow: none;
+      border-color: #eee9df;
+    }
+    .advanced-org { margin: 4px 10px 8px; }
+    .org-inline-editor {
+      min-height: 90px;
+      margin-top: 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+    .composer-toolbar {
+      border-top: 1px solid #eee9df;
+      padding-top: 10px;
+    }
+    .tool-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .send-btn { min-width: 96px; }
+    .tool-drawer {
+      width: min(980px, 100%);
+      max-height: 52vh;
+      overflow: auto;
+      margin: 0 auto 10px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fffefa;
+      padding: 14px;
+      box-shadow: 0 18px 48px rgba(41,37,32,.12);
+    }
+    .result-drawer {
+      position: fixed;
+      right: 18px;
+      top: 88px;
+      bottom: 18px;
+      width: min(420px, calc(100vw - 36px));
+      z-index: 20;
+      display: none;
+      background: #fffefa;
+      box-shadow: 0 22px 70px rgba(41,37,32,.18);
+    }
+    .shell.show-panel .result-drawer { display: block; }
+    .shell.has-results .side { display: none; }
+    .shell.has-results.show-panel .side { display: block; }
+    .settings-grid { grid-template-columns: 1fr; }
+    .provider-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    @media (max-width: 860px) {
+      .app-shell, .app-shell.has-results {
+        grid-template-columns: 1fr;
+        grid-template-areas: "chat";
+      }
+      .chat-sidebar { display: none; }
+      .chat-header { padding: 0 16px; }
+      .chat-thread { padding: 18px 12px 150px; }
+      .message { grid-template-columns: 1fr; }
+      .avatar { display: none; }
+      .compact-metrics { width: 100%; }
+      .analysis-head { display: grid; }
+      .composer-shell { padding: 10px 10px 16px; }
+      .provider-fields { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
-  <div class="shell">
-    <aside>
-      <div class="brand">
-        <div class="brand-copy">
-          <div class="kicker">WorkplaceThinker</div>
-          <h1>职场关系雷达</h1>
-          <p>把聊天、上传材料和组织架构转成可审计的人际关系图、合作图和隐藏风险假设。</p>
-        </div>
-        <div class="quick-row">
-          <button onclick="toggleSettings()">配置</button>
-          <button onclick="checkConfig()">检测服务</button>
-        </div>
+  <div class="app-shell shell">
+    <nav class="chat-sidebar">
+      <div class="sidebar-top">
+        <div class="sidebar-brand">WT</div>
+        <button class="icon-btn" onclick="resetConversation()" title="新分析">＋</button>
       </div>
-      <div class="controls">
-        <div class="primary-input">
-          <label>关注问题</label>
-          <textarea id="question" placeholder="例如：这段协作里有哪些关系、责任和隐藏风险需要确认？"></textarea>
-          <label>直接粘贴所有信息</label>
-          <textarea id="information" style="min-height: 240px;" placeholder="把聊天记录、会议纪要、组织架构、项目背景一次性贴进来。也可以先点右侧导入组织架构图。"></textarea>
-          <details style="margin-top: 16px;">
-            <summary class="small" style="cursor:pointer;">高级：结构化组织架构 JSON，可不填</summary>
-            <label>组织架构 JSON</label>
-            <textarea id="org" style="min-height: 120px;" placeholder='[{"name":"张伟","title":"产品负责人","team":"Product","manager":"王强"}]'></textarea>
-          </details>
-          <div style="display:flex; gap:10px; margin-top:18px; flex-wrap:wrap;">
-            <button class="primary" onclick="analyze()">生成关系图</button>
-            <button onclick="loadSample()">载入示例</button>
-          </div>
-          <p id="analysis-status" class="small">默认只需要粘贴信息。后端接口：POST /api/v1/workplace/analyze/raw。</p>
-        </div>
-        <div class="utility-rail">
-          <div class="start-card">
-            <div class="progress-row">
-              <strong>运行状态</strong>
-              <span id="api-status" class="status-pill warn">未检测</span>
-            </div>
-            <p id="config-summary" class="small">当前从本地页面打开时，需要配置 API 地址才能调用后端。</p>
-          </div>
-          <div class="start-card">
-            <strong>导入</strong>
-            <p class="small">把组织图、旧记忆和材料分入口处理，不用都挤在输入框里。</p>
-            <div class="quick-row">
-              <button onclick="focusMainInput()">粘贴材料</button>
-              <button onclick="openOrgImport()">组织架构图</button>
-              <button onclick="openMigrationPanel()">旧记忆迁移</button>
-            </div>
-          </div>
-          <div id="settings-panel" class="settings-panel" style="display:none;">
-            <strong>运行配置</strong>
-            <div class="settings-grid">
-              <div class="provider-row">
-                <strong>连接</strong>
-                <label>API 地址</label>
-                <input id="api-base" type="url" placeholder="http://127.0.0.1:8000" />
-                <label>Session ID</label>
-                <input id="session-id-input" type="text" placeholder="留空自动创建；填入可继续旧 session" />
-                <label class="check-row"><input id="cfg-use-memory" type="checkbox" checked /> 使用长期记忆</label>
-                <label class="check-row"><input id="cfg-save-memory" type="checkbox" checked /> 分析结果写入记忆</label>
-                <label class="check-row"><input id="cfg-use-llm" type="checkbox" /> 使用 LLM 增强分析</label>
-              </div>
-              <div class="provider-row">
-                <div class="provider-row-head">
-                  <strong>模型路由</strong>
-                  <span id="failover-status" class="status-pill">自动切换</span>
-                </div>
-                <label class="check-row"><input id="model-auto-failover" type="checkbox" checked /> API 不可用时自动切换到下一个 provider</label>
-                <label>聊天模板</label>
-                <select id="model-template"></select>
-                <div id="provider-list"></div>
-                <div class="quick-row">
-                  <button onclick="loadModelSettings()">刷新模型设置</button>
-                  <button class="primary" onclick="saveModelSettings()">保存模型设置</button>
-                </div>
-              </div>
-            </div>
-            <p id="runtime-status" class="small">VLM Key 在后端环境变量配置：VLM_API_KEY 或 OPENAI_API_KEY。</p>
-          </div>
-          <div id="migration-panel" class="settings-panel" style="display:none;">
-            <strong>旧数据迁移</strong>
-            <p class="small">粘贴旧 memory export，先预览 schema 迁移结果；确认没问题后可以导入当前 session。</p>
-            <textarea id="migration-input" class="migration-editor" placeholder='{"org_chart":[{"name":"张伟","team":"Product","reports_to":"王强"}]}'></textarea>
-            <div class="quick-row">
-              <button onclick="previewMigration()">预览迁移</button>
-              <button class="primary" onclick="importMigratedMemory()">导入迁移结果</button>
-            </div>
-            <p id="migration-status" class="small"></p>
-            <textarea id="migration-output" class="migration-editor" placeholder="迁移结果会显示在这里"></textarea>
-          </div>
-        </div>
+      <div class="search-box">搜索会话...</div>
+      <button class="nav-item active" onclick="resetConversation()">新分析</button>
+      <button class="nav-item" onclick="openOrgImport()">组织架构</button>
+      <button class="nav-item" onclick="openMigrationPanel()">记忆迁移</button>
+      <button class="nav-item" onclick="toggleSettings(true)">设置中心</button>
+      <div class="history-title">最近分析</div>
+      <button class="history-item" onclick="loadSample()">背锅风险示例</button>
+      <button class="history-item" onclick="openOrgImport()">组织架构导入</button>
+      <button class="history-item" onclick="openMigrationPanel()">旧记忆升级</button>
+      <div class="sidebar-foot">
+        <span id="api-status" class="status-pill warn">未检测</span>
+        <button onclick="checkConfig()">检测</button>
       </div>
-    </aside>
-    <main>
-      <div class="topbar">
+    </nav>
+
+    <main class="chat-main">
+      <header class="chat-header">
         <div>
-          <div class="kicker">relationship graph</div>
-          <strong id="graph-title">证据化关系与风险图</strong>
+          <strong>职场关系雷达</strong>
+          <p class="small">像聊天一样输入材料，复杂工具收进下方工具栏和设置抽屉。</p>
         </div>
-        <div class="quick-row">
-          <span class="small">圆点：人物 / 方块：风险 / 菱形：隐藏假设</span>
-          <button onclick="toggleSettings()">配置</button>
+        <div class="header-actions">
+          <button onclick="toggleSettings(true)">设置</button>
+          <button onclick="loadSample()">示例</button>
         </div>
-      </div>
-      <div id="graph-wrap" class="graph-wrap has-empty">
-        <div id="empty-graph" class="empty-graph">
-          <div class="empty-graph-inner">
-            <div class="kicker">ready when you are</div>
-            <h2>先导入，再分析</h2>
-            <p>粘贴聊天/会议/项目背景，或上传组织架构截图。系统会把事实、关系、工作内容和风险假设分开呈现。</p>
-            <div class="empty-actions">
-              <button class="primary" onclick="focusMainInput()">粘贴材料</button>
+      </header>
+
+      <section id="chat-thread" class="chat-thread">
+        <div class="message assistant-message welcome-message">
+          <div class="avatar">W</div>
+          <div class="bubble">
+            <div class="kicker">WorkplaceThinker</div>
+            <h1>把职场材料丢进来，我来拆关系、责任和风险。</h1>
+            <p>你可以直接粘贴聊天记录、会议纪要、项目背景；也可以从工具栏导入组织架构图或迁移旧记忆。分析前不会展开图谱和复杂面板。</p>
+            <div class="suggestion-row">
+              <button onclick="focusMainInput()">粘贴聊天记录</button>
               <button onclick="openOrgImport()">导入组织架构图</button>
-              <button onclick="loadSample()">查看示例</button>
+              <button onclick="toggleSettings(true)">配置模型</button>
             </div>
           </div>
         </div>
-        <svg id="graph"></svg>
-      </div>
+
+        <div id="analysis-message" class="message assistant-message analysis-message" style="display:none;">
+          <div class="avatar">W</div>
+          <div class="bubble analysis-bubble">
+            <div class="analysis-head">
+              <div>
+                <div class="kicker">relationship graph</div>
+                <strong id="graph-title">证据化关系与风险图</strong>
+              </div>
+              <div class="metric-grid compact-metrics">
+                <div class="metric"><span class="small">人物</span><strong id="m-people">0</strong></div>
+                <div class="metric"><span class="small">关系</span><strong id="m-edges">0</strong></div>
+                <div class="metric"><span class="small">风险</span><strong id="m-risks">0</strong></div>
+              </div>
+            </div>
+            <div id="graph-wrap" class="graph-wrap has-empty">
+              <div id="empty-graph" class="empty-graph">
+                <div class="empty-graph-inner">
+                  <div class="kicker">ready when you are</div>
+                  <h2>等待分析</h2>
+                  <p>发送材料后，这里会出现关系图和风险假设。</p>
+                </div>
+              </div>
+              <svg id="graph"></svg>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="composer-shell">
+        <div id="settings-panel" class="tool-drawer" style="display:none;">
+          <div class="drawer-head">
+            <strong>设置中心</strong>
+            <button onclick="toggleSettings(false)">收起</button>
+          </div>
+          <div class="settings-grid">
+            <div class="provider-row">
+              <strong>连接</strong>
+              <label>API 地址</label>
+              <input id="api-base" type="url" placeholder="http://127.0.0.1:8000" />
+              <label>Session ID</label>
+              <input id="session-id-input" type="text" placeholder="留空自动创建；填入可继续旧 session" />
+              <label class="check-row"><input id="cfg-use-memory" type="checkbox" checked /> 使用长期记忆</label>
+              <label class="check-row"><input id="cfg-save-memory" type="checkbox" checked /> 分析结果写入记忆</label>
+              <label class="check-row"><input id="cfg-use-llm" type="checkbox" /> 使用 LLM 增强分析</label>
+            </div>
+            <div class="provider-row">
+              <div class="provider-row-head">
+                <strong>模型路由</strong>
+                <span id="failover-status" class="status-pill">自动切换</span>
+              </div>
+              <label class="check-row"><input id="model-auto-failover" type="checkbox" checked /> API 不可用时自动切换到下一个 provider</label>
+              <label>聊天模板</label>
+              <select id="model-template"></select>
+              <div id="provider-list"></div>
+              <div class="quick-row">
+                <button onclick="loadModelSettings()">刷新模型设置</button>
+                <button class="primary" onclick="saveModelSettings()">保存模型设置</button>
+              </div>
+            </div>
+          </div>
+          <p id="runtime-status" class="small">VLM Key 在后端环境变量配置：VLM_API_KEY 或 OPENAI_API_KEY。</p>
+        </div>
+
+        <div id="migration-panel" class="tool-drawer" style="display:none;">
+          <div class="drawer-head">
+            <strong>旧数据迁移</strong>
+            <button onclick="closeMigrationPanel()">收起</button>
+          </div>
+          <p class="small">粘贴旧 memory export，先预览 schema 迁移结果；确认没问题后可以导入当前 session。</p>
+          <textarea id="migration-input" class="migration-editor" placeholder='{"org_chart":[{"name":"张伟","team":"Product","reports_to":"王强"}]}'></textarea>
+          <div class="quick-row">
+            <button onclick="previewMigration()">预览迁移</button>
+            <button class="primary" onclick="importMigratedMemory()">导入迁移结果</button>
+          </div>
+          <p id="migration-status" class="small"></p>
+          <textarea id="migration-output" class="migration-editor" placeholder="迁移结果会显示在这里"></textarea>
+        </div>
+
+        <div id="org-tool-panel" class="tool-drawer" style="display:none;">
+          <div class="drawer-head">
+            <strong>组织架构</strong>
+            <button onclick="closeOrgTool()">收起</button>
+          </div>
+          <div id="org-structure"></div>
+        </div>
+
+        <div class="composer-card">
+          <input id="question" class="question-line" type="text" placeholder="想确认的问题，例如：我是不是有背锅风险？" />
+          <textarea id="information" class="composer-input" placeholder="发送材料：聊天记录、会议纪要、组织架构、项目背景..."></textarea>
+          <details class="advanced-org">
+            <summary class="small">高级：结构化组织架构 JSON</summary>
+            <textarea id="org" class="org-inline-editor" placeholder='[{"name":"张伟","title":"产品负责人","team":"Product","manager":"王强"}]'></textarea>
+          </details>
+          <div class="composer-toolbar">
+            <div class="tool-buttons">
+              <button onclick="openOrgImport()">＋ 组织架构</button>
+              <button onclick="openMigrationPanel()">记忆迁移</button>
+              <button onclick="toggleSettings(true)">设置</button>
+              <button onclick="loadSample()">示例</button>
+            </div>
+            <button class="primary send-btn" onclick="analyze()">发送分析</button>
+          </div>
+          <p id="analysis-status" class="small">默认只需要粘贴信息。复杂配置都在设置中心。</p>
+        </div>
+      </footer>
     </main>
-    <section class="side panel">
-      <div class="metric-grid">
-        <div class="metric"><span class="small">人物</span><strong id="m-people">0</strong></div>
-        <div class="metric"><span class="small">关系</span><strong id="m-edges">0</strong></div>
-        <div class="metric"><span class="small">风险</span><strong id="m-risks">0</strong></div>
+
+    <section class="side panel result-drawer">
+      <div class="drawer-head">
+        <strong>分析详情</strong>
+        <button onclick="document.querySelector('.shell').classList.remove('show-panel')">隐藏</button>
       </div>
       <div class="tabs">
-        <button id="tab-overview" class="tab active" onclick="setView('overview')">分析总览</button>
-        <button id="tab-people" class="tab" onclick="setView('people')">人物档案</button>
-        <button id="tab-org" class="tab" onclick="setView('org')">组织架构</button>
+        <button id="tab-overview" class="tab active" onclick="setView('overview')">总览</button>
+        <button id="tab-people" class="tab" onclick="setView('people')">人物</button>
+        <button id="tab-org" class="tab" onclick="setView('org')">组织</button>
       </div>
       <div id="view-overview" class="view active">
         <h3>总结</h3>
         <p id="summary">等待分析。</p>
-        <h3>隐藏假设</h3>
-        <div id="hypotheses"></div>
-        <h3>风险信号</h3>
-        <div id="risks"></div>
-        <h3>工作内容网</h3>
-        <div id="work"></div>
-        <h3>行为观察</h3>
-        <div id="behavior"></div>
-        <h3>互联网语义</h3>
-        <div id="jargon"></div>
-        <h3>组织动态</h3>
-        <div id="org-dynamics"></div>
-        <h3>组织模式</h3>
-        <div id="org-patterns"></div>
-        <h3>责任 / 决策 / 资源链</h3>
-        <div id="political-flows"></div>
-        <h3>证据事件</h3>
-        <div id="evidence-events"></div>
-        <h3>知识框架</h3>
-        <div id="knowledge"></div>
-        <h3>建议确认问题</h3>
-        <div id="questions"></div>
-        <h3>控制动作</h3>
-        <div id="actions"></div>
+        <h3>隐藏假设</h3><div id="hypotheses"></div>
+        <h3>风险信号</h3><div id="risks"></div>
+        <h3>工作内容网</h3><div id="work"></div>
+        <h3>行为观察</h3><div id="behavior"></div>
+        <h3>互联网语义</h3><div id="jargon"></div>
+        <h3>组织动态</h3><div id="org-dynamics"></div>
+        <h3>组织模式</h3><div id="org-patterns"></div>
+        <h3>责任 / 决策 / 资源链</h3><div id="political-flows"></div>
+        <h3>证据事件</h3><div id="evidence-events"></div>
+        <h3>知识框架</h3><div id="knowledge"></div>
+        <h3>建议确认问题</h3><div id="questions"></div>
+        <h3>控制动作</h3><div id="actions"></div>
       </div>
-      <div id="view-people" class="view">
-        <div id="people-directory"></div>
-        <div id="person-detail"></div>
-      </div>
-      <div id="view-org" class="view">
-        <div id="org-structure"></div>
-      </div>
+      <div id="view-people" class="view"><div id="people-directory"></div><div id="person-detail"></div></div>
+      <div id="view-org" class="view"><div id="org-structure-detail"></div></div>
     </section>
   </div>
   <script>
@@ -533,10 +817,33 @@
     }
 
     function openMigrationPanel() {
-      document.querySelector('.shell').classList.add('show-panel');
       document.getElementById('migration-panel').style.display = 'block';
-      toggleSettings(true);
+      document.getElementById('settings-panel').style.display = 'none';
+      document.getElementById('org-tool-panel').style.display = 'none';
       document.getElementById('migration-input').focus();
+    }
+
+    function closeMigrationPanel() {
+      document.getElementById('migration-panel').style.display = 'none';
+    }
+
+    function closeOrgTool() {
+      document.getElementById('org-tool-panel').style.display = 'none';
+    }
+
+    function resetConversation() {
+      currentData = null;
+      selectedPerson = '';
+      peopleMode = 'directory';
+      document.querySelector('.shell').classList.remove('has-results', 'show-panel');
+      document.getElementById('analysis-message').style.display = 'none';
+      document.getElementById('empty-graph').style.display = 'grid';
+      document.getElementById('graph-wrap').classList.add('has-empty');
+      document.getElementById('graph').innerHTML = '';
+      document.getElementById('information').value = '';
+      document.getElementById('question').value = '';
+      document.getElementById('analysis-status').textContent = '已开始新的分析。';
+      focusMainInput();
     }
 
     function focusMainInput() {
@@ -544,7 +851,9 @@
     }
 
     function openOrgImport() {
-      document.querySelector('.shell').classList.add('show-panel');
+      document.getElementById('org-tool-panel').style.display = 'block';
+      document.getElementById('settings-panel').style.display = 'none';
+      document.getElementById('migration-panel').style.display = 'none';
       setView('org');
       if (!currentData) renderOrgStructure(loadOrgDraft());
       setTimeout(() => document.getElementById('org-import-text')?.focus(), 0);
@@ -847,7 +1156,8 @@
         document.getElementById('session-id-input').value = currentSessionId;
         saveConfig();
       }
-      document.querySelector('.shell').classList.add('has-results', 'show-panel');
+      document.querySelector('.shell').classList.add('has-results');
+      document.getElementById('analysis-message').style.display = 'grid';
       document.getElementById('graph-wrap').classList.remove('has-empty');
       document.getElementById('empty-graph').style.display = 'none';
       refreshConfigSummary();
@@ -991,7 +1301,7 @@
       const people = org.people || [];
       const lines = org.reporting_lines || [];
       const trees = org.reporting_tree || [];
-      document.getElementById('org-structure').innerHTML = `
+      const html = `
         <h3>组织架构</h3>
         <p class="small">专门记录部门、人员、岗位和正式汇报线。这里保存的是结构化组织信息，不是风险判断。</p>
         <div class="card person-detail">
@@ -1043,6 +1353,9 @@
           <p id="org-save-status" class="small"></p>
         </div>
       `;
+      document.getElementById('org-structure').innerHTML = html;
+      const detail = document.getElementById('org-structure-detail');
+      if (detail) detail.innerHTML = html;
     }
 
     function renderOrgTreeNode(node) {
