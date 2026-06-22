@@ -642,7 +642,7 @@
                 <strong>模型路由</strong>
                 <span id="failover-status" class="status-pill">自动切换</span>
               </div>
-              <p class="small">每个平台只需要模型名称、API URL 和 API Key；temperature、max_tokens、enable_thinking 等官方参数写在 JSON 里。</p>
+              <p class="small">每个平台只需要模型名称、API URL 和 API Key；平台参数由系统按官方接口内化处理。</p>
               <label class="check-row"><input id="model-auto-failover" type="checkbox" checked /> 当前 API 不可用时自动切换到下一个配置</label>
               <label>聊天模板</label>
               <select id="model-template"></select>
@@ -920,7 +920,6 @@
             <label>模型名称<input class="provider-model" type="text" value="${escapeAttr(provider.model || '')}" placeholder="deepseek-chat" /></label>
             <label>API URL<input class="provider-base-url" type="url" value="${escapeAttr(provider.base_url || '')}" placeholder="https://api.deepseek.com" /></label>
             <label>API Key<input class="provider-api-key" type="password" value="" placeholder="${provider.configured ? '留空保留当前 Key' : 'sk-...'}" /></label>
-            <label>官方参数 JSON<textarea class="provider-params" rows="3" placeholder='{"temperature":0.2,"max_tokens":2048}'>${escapeHtml(JSON.stringify(provider.params || {}, null, 2))}</textarea></label>
           </div>
           <p class="small">图片和文本共用这个模型；如果模型不支持图片，开启自动切换后会尝试下一个配置。</p>
         </div>
@@ -928,25 +927,13 @@
     }
 
     function collectModelSettings() {
-      const providers = Array.from(document.querySelectorAll('[data-provider-id]')).map(row => {
-        const paramsRaw = row.querySelector('.provider-params').value.trim();
-        let params = {};
-        if (paramsRaw) {
-          try {
-            params = JSON.parse(paramsRaw);
-          } catch (err) {
-            throw new Error(`${row.dataset.providerId} 的官方参数 JSON 格式不对`);
-          }
-        }
-        return {
+      const providers = Array.from(document.querySelectorAll('[data-provider-id]')).map(row => ({
           id: row.dataset.providerId,
           enabled: row.querySelector('.provider-enabled').checked,
           base_url: row.querySelector('.provider-base-url').value.trim(),
           api_key: row.querySelector('.provider-api-key').value.trim(),
           model: row.querySelector('.provider-model').value.trim(),
-          params,
-        };
-      });
+      }));
       return {
         providers,
         active_template_id: document.getElementById('model-template').value,

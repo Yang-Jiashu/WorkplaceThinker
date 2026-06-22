@@ -270,7 +270,6 @@ class WorkplaceInsightAPITest(unittest.TestCase):
                         "base_url": "https://api.deepseek.com",
                         "api_key": "sk-test-key-1234",
                         "model": "deepseek-chat",
-                        "params": {"temperature": 0.2, "max_tokens": 1024},
                     }
                 ],
             },
@@ -282,7 +281,6 @@ class WorkplaceInsightAPITest(unittest.TestCase):
         deepseek_provider = [p for p in settings["providers"] if p["id"] == "deepseek"][0]
         self.assertEqual("https://api.deepseek.com", deepseek_provider["base_url"])
         self.assertEqual("deepseek-chat", deepseek_provider["model"])
-        self.assertEqual(1024, deepseek_provider["params"]["max_tokens"])
         self.assertEqual("sk-t...1234", deepseek_provider["api_key"])
 
     @unittest.skipIf(TestClient is None or app is None, "fastapi is not installed")

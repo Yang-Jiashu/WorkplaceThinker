@@ -7,7 +7,7 @@ import copy
 import json
 import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
 import aiohttp
@@ -32,7 +32,6 @@ class ProviderConfig:
     enabled: bool = True
     priority: int = 10
     timeout_seconds: float = 45.0
-    params: Dict[str, Any] = field(default_factory=dict)
 
     def resolved_api_key(self) -> str:
         return self.api_key or os.getenv(self.api_key_env, "")
@@ -168,9 +167,6 @@ class ModelConfigManager:
                     provider.model = str(item["model"]).strip()
                 if item.get("chat_model") and not item.get("model"):
                     provider.model = str(item["chat_model"]).strip()
-                params = item.get("params", item.get("official_params", item.get("extra_body")))
-                if isinstance(params, dict):
-                    provider.params = params
                 by_id[provider_id] = provider
             self.providers = list(by_id.values())
 
@@ -278,7 +274,6 @@ class ModelRouter:
             "model": provider.model,
             "messages": payload_messages,
         }
-        payload.update(provider.params or {})
 
         headers = {"Authorization": f"Bearer {provider.resolved_api_key()}", "Content-Type": "application/json"}
         timeout = aiohttp.ClientTimeout(total=float(provider.timeout_seconds))
