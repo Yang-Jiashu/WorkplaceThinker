@@ -155,8 +155,11 @@ class WorkplaceInsightHarnessTest(unittest.IsolatedAsyncioTestCase):
             return """
             {
               "people": [
-                {"name": "张伟", "title": "产品负责人", "department": "Product", "manager": "王强"},
-                {"name": "王强", "title": "部门经理", "department": "Platform", "manager": ""}
+                {"name": "张伟", "title": "产品负责人", "department": "Product"},
+                {"name": "王强", "title": "部门经理", "department": "Platform"}
+              ],
+              "reporting_lines": [
+                {"source_name": "张伟", "target_name": "王强", "type": "formal_reports_to"}
               ]
             }
             """
@@ -170,7 +173,33 @@ class WorkplaceInsightHarnessTest(unittest.IsolatedAsyncioTestCase):
         org = result["org_structure"]
         self.assertEqual(2, org["summary"]["person_count"])
         self.assertEqual(1, org["summary"]["reporting_line_count"])
+        self.assertEqual("王强", org["reporting_tree"][0]["name"])
+        self.assertEqual("张伟", org["reporting_tree"][0]["children"][0]["name"])
         self.assertTrue(result["import_summary"]["vlm_used"])
+
+    async def test_org_importer_text_fallback_filters_ocr_labels(self):
+        importer = OrgStructureImporter(vlm_func=None)
+        result = await importer.import_structure(
+            text="\n".join(
+                [
+                    "赵一",
+                    "直属上级 具体职能待明确",
+                    "生成式 负责人：钱二",
+                    "算法研发",
+                    "负责人 | └ AI Infra (7人)",
+                ]
+            ),
+            images=[],
+            use_vlm=False,
+        )
+        people = result["org_structure"]["people"]
+        names = {person["name"] for person in people}
+        self.assertIn("赵一", names)
+        self.assertIn("钱二", names)
+        self.assertNotIn("直属上级", names)
+        self.assertNotIn("负责人", names)
+        self.assertNotIn("算法研发", names)
+        self.assertEqual("text_fallback", result["org_structure"]["storage"]["import_method"])
 
     async def test_model_router_fails_over_to_next_provider(self):
         manager = ModelConfigManager()

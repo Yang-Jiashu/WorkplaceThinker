@@ -24,6 +24,25 @@ from .insights import OrgPerson, WorkplaceInsightEngine, json_object_from_text, 
 VLMFunc = Callable[[str, Sequence[str]], Awaitable[str]]
 
 
+ORG_PERSON_STOPWORDS = {
+    "组织架构",
+    "直属上级",
+    "具体职能",
+    "职能待明确",
+    "未标注岗位",
+    "未标注部门",
+    "算法研发",
+    "生成式",
+    "负责人",
+    "汇报线",
+    "部门",
+    "人员",
+    "团队",
+    "岗位",
+    "职位",
+}
+
+
 ORG_IMPORT_SYSTEM_PROMPT = """你是组织架构 OCR 与结构化抽取助手。
 任务：从组织架构截图、通讯录截图、部门说明或补充文本中抽取稳定组织事实。
 只抽取可见或用户明确提供的信息，不要猜测政治关系、风险、人品或动机。
@@ -82,6 +101,7 @@ class OrgStructureImporter:
 
         extracted = self._parse_vlm_payload(raw_vlm) if raw_vlm else {}
         org_chart = self._normalize_people(extracted.get("people") or extracted.get("org_chart") or [])
+        org_chart = self._apply_reporting_lines(org_chart, extracted.get("reporting_lines") or [])
         if self._looks_like_org_text(text):
             org_chart.extend(self._extract_org_chart_from_text(text))
 
@@ -107,7 +127,10 @@ class OrgStructureImporter:
             "source": "multimodal_org_import",
             "status": "imported",
             "editable": True,
+            "import_method": "vlm" if raw_vlm else "text_fallback",
         }
+        if extracted.get("notes"):
+            org_structure["import_notes"] = list(extracted.get("notes") or [])
 
         return {
             "org_structure": org_structure,
@@ -252,9 +275,80 @@ class OrgStructureImporter:
             )
         return normalized
 
+    def _apply_reporting_lines(
+        self,
+        people: List[Dict[str, Any]],
+        lines: Sequence[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        if not people or not lines:
+            return people
+        by_name = {str(person.get("name") or "").strip(): person for person in people}
+        for item in lines or []:
+            if not isinstance(item, dict):
+                continue
+            source = str(item.get("source_name") or item.get("source") or item.get("from") or "").strip()
+            target = str(item.get("target_name") or item.get("target") or item.get("to") or "").strip()
+            if source in by_name and target and not by_name[source].get("manager"):
+                by_name[source]["manager"] = target
+        return people
+
     def _extract_org_chart_from_text(self, text: str) -> List[Dict[str, Any]]:
-        parsed = self.engine.parse_information(text or "")
-        return list(parsed.get("org_chart") or [])
+        """Conservative text-only org extraction.
+
+        This is intentionally narrower than the general workplace parser. OCR
+        often contains labels like "直属上级" or "负责人"; treating those as
+        names creates fake org charts, so only accept clearly person-like
+        values or explicit structured org lines.
+        """
+        people: List[Dict[str, Any]] = []
+        current_department = ""
+        for raw_line in str(text or "").splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            parsed = self.engine._parse_org_line(line)
+            if parsed and self._is_person_name(parsed.get("name", "")):
+                people.append(parsed)
+                current_department = parsed.get("team") or current_department
+                continue
+
+            owner_match = re.search(
+                r"(?:(?P<dept>[\u4e00-\u9fffA-Za-z0-9 /_\-]{2,24})\s*)?负责人[:：]\s*(?P<name>[\u4e00-\u9fff]{2,4}|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})",
+                line,
+            )
+            if owner_match:
+                name = owner_match.group("name")
+                department = (owner_match.group("dept") or current_department or "").strip(" ：:-—|")
+                if self._is_person_name(name):
+                    people.append({"name": name, "title": "负责人", "team": department, "manager": ""})
+                    current_department = department or current_department
+                continue
+
+            if self._looks_like_department(line):
+                current_department = re.sub(r"[\s|└─()（）0-9人]+", " ", line).strip()
+                continue
+
+            if self._is_person_name(line):
+                people.append({"name": line, "title": "", "team": current_department, "manager": ""})
+
+        return people
+
+    def _is_person_name(self, value: str) -> bool:
+        name = str(value or "").strip()
+        if not name or name in ORG_PERSON_STOPWORDS:
+            return False
+        if any(token in name for token in ("上级", "职能", "部门", "团队", "算法", "研发", "负责", "Infra")):
+            return False
+        return bool(re.fullmatch(r"[\u4e00-\u9fff]{2,4}|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}", name))
+
+    def _looks_like_department(self, value: str) -> bool:
+        line = str(value or "").strip()
+        if not line or "负责人" in line or "汇报" in line or "上级" in line:
+            return False
+        if re.fullmatch(r"[\u4e00-\u9fffA-Za-z0-9 /_\-（）()]{2,24}", line):
+            return any(token in line for token in ("部", "组", "团队", "研发", "Infra", "平台", "产品", "生成式"))
+        return False
 
     def _looks_like_org_text(self, text: str) -> bool:
         raw = str(text or "").strip()
@@ -270,6 +364,7 @@ class OrgStructureImporter:
             "成员：",
             "部门:",
             "部门：",
+            "负责人",
             "org chart",
         )
         lowered = raw.lower()

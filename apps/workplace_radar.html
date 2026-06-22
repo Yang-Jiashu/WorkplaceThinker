@@ -258,6 +258,92 @@
     .back-row { margin-bottom: 12px; }
     .org-tree { display: grid; gap: 8px; margin-top: 10px; }
     .org-node { border-left: 3px solid var(--lake); padding-left: 10px; margin: 6px 0 6px 10px; }
+    .org-workbench { display: grid; gap: 14px; }
+    .org-hero {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      padding: 16px;
+      display: grid;
+      gap: 10px;
+    }
+    .org-overview-grid { display: grid; grid-template-columns: 1.2fr .8fr; gap: 14px; align-items: start; }
+    .org-chart-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      padding: 14px;
+      overflow: auto;
+    }
+    .org-tree-canvas {
+      min-width: 680px;
+      padding: 12px 8px 4px;
+      overflow-x: auto;
+    }
+    .org-tree-diagram,
+    .org-tree-diagram ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      text-align: center;
+      position: relative;
+    }
+    .org-tree-diagram ul {
+      display: flex;
+      justify-content: center;
+      gap: 18px;
+      padding-top: 26px;
+    }
+    .org-tree-diagram li {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+      padding: 0 6px;
+    }
+    .org-tree-diagram li::before,
+    .org-tree-diagram li::after {
+      content: "";
+      position: absolute;
+      top: -14px;
+      width: 50%;
+      height: 14px;
+      border-top: 2px solid #d7e0e7;
+    }
+    .org-tree-diagram li::before { right: 50%; }
+    .org-tree-diagram li::after { left: 50%; }
+    .org-tree-diagram li:only-child::before,
+    .org-tree-diagram li:only-child::after { display: none; }
+    .org-tree-diagram li:first-child::before,
+    .org-tree-diagram li:last-child::after { border-top: 0; }
+    .org-tree-diagram li::before { border-right: 2px solid #d7e0e7; }
+    .org-tree-diagram li::after { border-left: 2px solid #d7e0e7; }
+    .org-tree-diagram > li::before,
+    .org-tree-diagram > li::after { display: none; }
+    .org-tree-diagram ul::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 50%;
+      height: 26px;
+      border-left: 2px solid #d7e0e7;
+    }
+    .org-person-node {
+      border: 1px solid #e1d9cb;
+      border-radius: 12px;
+      background: #fffefa;
+      padding: 12px;
+      min-width: 220px;
+      box-shadow: 0 8px 22px rgba(41,37,32,.05);
+    }
+    .org-person-name { font-size: 16px; font-weight: 800; color: var(--ink); }
+    .org-person-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .org-table { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }
+    .org-table-row { display: grid; grid-template-columns: 1.1fr 1fr 1fr 1fr; gap: 10px; padding: 11px 14px; border-top: 1px solid #eee9df; align-items: center; }
+    .org-table-row:first-child { border-top: 0; background: #f8f6f1; color: var(--muted); font-size: 12px; font-weight: 700; }
+    .dept-list { display: grid; gap: 8px; }
+    .dept-item { display: flex; justify-content: space-between; gap: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #fff; }
+    .org-warning { border-color: #e7c3b2; background: #fff7f0; }
     .org-editor { min-height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
     .migration-editor { min-height: 150px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
     input[type="file"] { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--surface); }
@@ -558,6 +644,8 @@
       .composer-shell { padding: 10px 10px 16px; }
       .provider-fields { grid-template-columns: 1fr; }
       .tool-drawer { width: 100%; }
+      .org-overview-grid { grid-template-columns: 1fr; }
+      .org-table-row { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -1340,56 +1428,85 @@
       const people = org.people || [];
       const lines = org.reporting_lines || [];
       const trees = org.reporting_tree || [];
+      const method = org.storage?.import_method || org.storage?.source || '';
+      const methodText = method === 'vlm' ? 'VLM 图像解析' : method === 'text_fallback' ? '文本兜底解析' : '手动/记忆数据';
+      const uncertain = method === 'text_fallback' || people.some(person => !person.title || !person.department);
       const html = `
-        <h3>组织架构</h3>
-        <p class="small">专门记录部门、人员、岗位和正式汇报线。这里保存的是结构化组织信息，不是风险判断。</p>
-        <div class="card person-detail">
-          <strong>图片 + 文本导入</strong>
-          <p class="small">上传组织架构图、通讯录截图或汇报线截图；有 VLM API 时会识别图片，没有时会先用文本兜底。</p>
-          <label>补充说明</label>
-          <textarea id="org-import-text" style="min-height: 90px;" placeholder="例如：这是产品与平台团队组织架构，箭头表示直属汇报。"></textarea>
-          <label>组织架构图片</label>
-          <input id="org-import-images" type="file" accept="image/*" multiple />
-          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
-            <button class="primary" onclick="importOrgFromImages()">导入组织架构</button>
-            <button onclick="document.getElementById('org-import-images').value=''">清空图片</button>
+        <div class="org-workbench">
+          <div class="org-hero">
+            <div class="provider-row-head">
+              <div>
+                <div class="kicker">organization map</div>
+                <h3>组织架构</h3>
+                <p class="small">专门记录部门、人员、岗位和正式汇报线；这不是风险判断。</p>
+              </div>
+              <span class="status-pill">${escapeHtml(methodText)}</span>
+            </div>
+            ${uncertain ? `<div class="banner org-warning">当前包含兜底解析或未标注字段，请把“未标注岗位/部门”补齐后再作为长期组织事实保存。</div>` : ''}
+            <div class="metric-grid">
+              <div class="metric"><span class="small">部门</span><strong>${Number(summary.department_count ?? departments.length)}</strong></div>
+              <div class="metric"><span class="small">人员</span><strong>${Number(summary.person_count ?? people.length)}</strong></div>
+              <div class="metric"><span class="small">汇报线</span><strong>${Number(summary.reporting_line_count ?? lines.length)}</strong></div>
+            </div>
           </div>
-          <p id="org-import-status" class="small"></p>
-        </div>
-        <div class="metric-grid">
-          <div class="metric"><span class="small">部门</span><strong>${Number(summary.department_count ?? departments.length)}</strong></div>
-          <div class="metric"><span class="small">人员</span><strong>${Number(summary.person_count ?? people.length)}</strong></div>
-          <div class="metric"><span class="small">汇报线</span><strong>${Number(summary.reporting_line_count ?? lines.length)}</strong></div>
-        </div>
-        <div class="card person-detail">
-          <strong>部门</strong>
-          ${departments.map(dept => `
-            <p class="small">${escapeHtml(dept.name || '')} · ${Number(dept.people_count || (dept.people || []).length)} 人</p>
-          `).join('') || '<p class="small">暂无部门。</p>'}
-        </div>
-        <div class="card person-detail">
-          <strong>汇报树</strong>
-          <div class="org-tree">${trees.map(node => renderOrgTreeNode(node)).join('') || '<p class="small">暂无汇报树。</p>'}</div>
-        </div>
-        <div class="card person-detail">
-          <strong>人员名单</strong>
-          ${people.map(person => `
-            <p class="small">${escapeHtml(person.name || '')} · ${escapeHtml(person.title || '未标注岗位')} · ${escapeHtml(person.department || '未标注部门')} ${person.manager ? `→ 汇报 ${escapeHtml(person.manager)}` : ''}</p>
-          `).join('') || '<p class="small">暂无人员。</p>'}
-        </div>
-        <div class="card person-detail">
-          <strong>正式汇报线</strong>
-          ${lines.map(line => `<p class="small">${escapeHtml(line.source_name || '')} → ${escapeHtml(line.target_name || '')}</p>`).join('') || '<p class="small">暂无汇报线。</p>'}
-        </div>
-        <div class="card person-detail">
-          <strong>编辑组织架构 JSON</strong>
-          <p class="small">可直接修改 people / departments / reporting_lines；保存后会同步到左侧结构化组织架构输入，并参与下一次分析。</p>
-          <textarea id="org-editor" class="org-editor">${escapeHtml(JSON.stringify(org, null, 2))}</textarea>
-          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
-            <button class="primary" onclick="saveOrgStructure()">保存组织架构</button>
-            <button onclick="resetOrgDraft()">清除本地草稿</button>
+
+          <div class="org-overview-grid">
+            <div class="org-chart-card">
+              <div class="provider-row-head">
+                <strong>汇报图</strong>
+                <span class="small">${lines.length} 条正式线</span>
+              </div>
+              <div class="org-tree-canvas">${trees.length ? `<ul class="org-tree-diagram">${trees.map(node => renderOrgTreeNode(node)).join('')}</ul>` : '<p class="small">暂无汇报树。请导入图片、粘贴文本，或手动编辑 JSON。</p>'}</div>
+            </div>
+            <div class="org-chart-card">
+              <strong>部门</strong>
+              <div class="dept-list">
+                ${departments.map(dept => `
+                  <div class="dept-item">
+                    <span>${escapeHtml(dept.name || '未标注部门')}</span>
+                    <span class="small">${Number(dept.people_count || (dept.people || []).length)} 人</span>
+                  </div>
+                `).join('') || '<p class="small">暂无部门。</p>'}
+              </div>
+            </div>
           </div>
-          <p id="org-save-status" class="small"></p>
+
+          <div class="org-table">
+            <div class="org-table-row"><span>姓名</span><span>岗位</span><span>部门</span><span>直属上级</span></div>
+            ${people.map(person => `
+              <div class="org-table-row">
+                <strong>${escapeHtml(person.name || '')}</strong>
+                <span>${escapeHtml(person.title || '待确认')}</span>
+                <span>${escapeHtml(person.department || '待确认')}</span>
+                <span>${person.manager ? escapeHtml(person.manager) : '<span class="small">无/待确认</span>'}</span>
+              </div>
+            `).join('') || '<div class="org-table-row"><span class="small">暂无人员。</span><span></span><span></span><span></span></div>'}
+          </div>
+
+          <div class="card person-detail">
+            <strong>图片 + 文本导入</strong>
+            <p class="small">优先使用 VLM 识别组织架构图；没有 VLM 或没有图片时，只做保守文本兜底，不确定内容会提示你确认。</p>
+            <label>补充说明</label>
+            <textarea id="org-import-text" style="min-height: 90px;" placeholder="例如：这是产品与平台团队组织架构，箭头表示直属汇报。"></textarea>
+            <label>组织架构图片</label>
+            <input id="org-import-images" type="file" accept="image/*" multiple />
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+              <button class="primary" onclick="importOrgFromImages()">导入组织架构</button>
+              <button onclick="document.getElementById('org-import-images').value=''">清空图片</button>
+            </div>
+            <p id="org-import-status" class="small"></p>
+          </div>
+
+          <div class="card person-detail">
+            <strong>编辑组织架构 JSON</strong>
+            <p class="small">可直接修改 people / departments / reporting_lines；保存后会同步到结构化组织架构输入，并参与下一次分析。</p>
+            <textarea id="org-editor" class="org-editor">${escapeHtml(JSON.stringify(org, null, 2))}</textarea>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+              <button class="primary" onclick="saveOrgStructure()">保存组织架构</button>
+              <button onclick="resetOrgDraft()">清除本地草稿</button>
+            </div>
+            <p id="org-save-status" class="small"></p>
+          </div>
         </div>
       `;
       document.getElementById('org-structure').innerHTML = html;
@@ -1400,12 +1517,16 @@
     function renderOrgTreeNode(node) {
       const children = node.children || [];
       return `
-        <div class="org-node">
-          <strong>${escapeHtml(node.name || '')}</strong>
-          <span class="chip">${escapeHtml(node.title || '未标注岗位')}</span>
-          <span class="chip">${escapeHtml(node.department || '未标注部门')}</span>
-          ${children.map(child => renderOrgTreeNode(child)).join('')}
-        </div>
+        <li>
+          <div class="org-person-node">
+            <div class="org-person-name">${escapeHtml(node.name || '')}</div>
+            <div class="org-person-meta">
+              <span class="chip">${escapeHtml(node.title || '待确认岗位')}</span>
+              <span class="chip">${escapeHtml(node.department || '待确认部门')}</span>
+            </div>
+          </div>
+          ${children.length ? `<ul>${children.map(child => renderOrgTreeNode(child)).join('')}</ul>` : ''}
+        </li>
       `;
     }
 
